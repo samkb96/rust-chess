@@ -1,9 +1,22 @@
-/target
+# Rust / Cargo
+target/
 **/*.rs.bk
+**/*.rs~
 
+# Cargo dependencies
 Cargo.lock
-.cargo/
 
+# VSCode
 .vscode/
-/inkscape
-/svgs
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+.DS_Store
+
+# Folders
+svgs/
+inkscape/
+images/
+misc/
