@@ -1,5 +1,6 @@
-//use crate::game::*;
+use crate::game::*;
 use arrayvec::ArrayString;
+use macroquad::prelude::*;
 
 const PIECE_ID_TO_FEN: [char; 6] = ['p', 'n', 'b', 'r', 'q', 'k'];
 pub const PIECE_KINDS: [PieceKind; 6] = [
@@ -12,7 +13,7 @@ pub const PIECE_KINDS: [PieceKind; 6] = [
 ];
 pub const PIECE_COLOURS: [PieceColour; 2] = [PieceColour::White, PieceColour::Black];
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum PieceColour {
     White = 0,
     Black = 1,
@@ -21,7 +22,7 @@ pub enum PieceColour {
 /// **Encodes piece types with a uzise discriminant**
 ///
 /// *Methods* - [from_fen_char]
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum PieceKind {
     Pawn = 0,
     Knight = 1,
@@ -31,7 +32,7 @@ pub enum PieceKind {
     King = 5,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Piece {
     pub kind: PieceKind,
     pub colour: PieceColour,
@@ -118,6 +119,34 @@ impl BitBoards {
             }
         }
         bitboard
+    }
+
+    pub fn print_bitboards_to_screen(&self, font: &Font) {
+        let line_spacing = 30;
+
+        for rank in (0..8).rev() {
+            let mut text_rank = String::with_capacity(9);
+
+            for file in 0..8 {
+                let square_index = 8 * rank + file;
+                match self.piece_at_square(square_index) {
+                    Some(c) => text_rank.push(c.to_fen_char()),
+                    None => text_rank.push('_'),
+                }
+            }
+
+            draw_text_ex(
+                &text_rank,
+                8. * SQUARE_SIZE + 25. + X_OFFSET,
+                (rank * line_spacing) as f32 + Y_OFFSET,
+                TextParams {
+                    font: Some(font),
+                    font_size: 30,
+                    color: WHITE,
+                    ..Default::default()
+                }
+            );        
+        }
     }
 
     fn is_bitboard_square_set(bitboard: u64, square_index: usize) -> bool {
