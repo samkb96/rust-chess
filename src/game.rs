@@ -1,17 +1,15 @@
 use crate::mechanics::*;
 use arrayvec::ArrayString;
-//use macroquad::audio::*;
 use core::fmt::Write;
 use macroquad::prelude::*;
 use std::collections::HashMap;
-
 
 pub const WINDOW_WIDTH: f32 = SQUARE_SIZE * 14.;
 pub const WINDOW_HEIGHT: f32 = SQUARE_SIZE * 9.5;
 pub const SQUARE_SIZE: f32 = 100.;
 
-pub const X_OFFSET: f32 = 300.;
-pub const Y_OFFSET: f32 = 50.;
+pub const X_OFFSET: f32 = 440.;
+pub const Y_OFFSET: f32 = 120.;
 
 const BOARD_SIZE: usize = 8;
 const DARK_COLOUR: Color = color_u8!(118, 150, 86, 255);
@@ -20,17 +18,60 @@ const SQUARE_COLOURS: [SquareColour; 2] = [SquareColour::Dark, SquareColour::Lig
 
 pub const STARTING_POSITION_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-
 pub struct DisplayBoard {
-    /// squares: Vec<Vec<Square; 8>;8>
     squares: [[Square; 8]; 8],
+    pub game_state: GameState,
     drag_state: DragState,
     drag_mouse_position: Option<Vec2>,
 }
 
-impl DisplayBoard {
-    /// **Creates a DisplayBoard from bitboards**
-    pub fn from_bitboards(bitboards: &BitBoards) -> Self {
+/// main DisplayBoard methods called in main loop
+pub trait CoreMethods {
+    fn initialise(initial_game_state: GameState) -> Self;
+    fn draw_to_screen(&self, texture: &PieceTextures, font: &Font);
+    fn update(&mut self);
+    fn draw_debug_info(&self, font: &Font);
+}
+
+// helpers used in drag-drop match cases
+trait DragStateHandling {
+    fn dragstate_handler_none(&mut self, mouse_position: Vec2);
+    fn dragstate_handler_started(
+        &mut self,
+        mouse_position: Vec2,
+        piece: Piece,
+        origin: BoardCoordinate,
+    );
+    fn dragstate_handler_dragging(
+        &mut self,
+        mouse_position: Vec2,
+        piece: Piece,
+        origin: BoardCoordinate,
+    );
+    fn reset_on_null_move(&mut self, origin: BoardCoordinate, piece: Piece);
+    fn make_verified_move(&mut self, target: BoardCoordinate, piece: Piece);
+}
+
+/// operations
+trait SquareMethods {
+    fn square_at_coordinate(&self, coordinate: BoardCoordinate) -> &Square;
+    fn square_at_mutable(&mut self, coordinate: BoardCoordinate) -> &mut Square;
+    fn add_to_square(&mut self, coordinate: BoardCoordinate, piece: Piece);
+    fn clear_square(&mut self, coordinate: BoardCoordinate) -> Option<Piece>;
+}
+
+trait MouseFunctions {
+    fn mouse_pos_to_coordinate(mouse: Vec2) -> Option<BoardCoordinate>;
+    fn coordinate_to_screen_position(coordinate: BoardCoordinate) -> Vec2;
+}
+
+trait HelperFunctions {
+    fn is_move_legal(candidate_move: &Move, legal_moves: &[Move]) -> bool;
+    //fn create_candidate_move(start: BoardCoordinate,end: BoardCoordinate, promotion: Option<PieceKind>) -> Move;
+}
+
+impl CoreMethods for DisplayBoard {
+    fn initialise(initial_game_state: GameState) -> Self {
         // initialise all squares as empty and light
         let mut squares = [[Square {
             piece: None,
@@ -42,25 +83,66 @@ impl DisplayBoard {
                 let square_colour = SQUARE_COLOURS[(rank + file) % 2];
                 squares[rank][file].colour = square_colour;
                 let square_index = rank * 8 + file;
-                squares[rank][file].piece = BitBoards::piece_at_square(bitboards, square_index)
+
+                squares[rank][file].piece =
+                    initial_game_state.bitboards.piece_at_square(square_index);
             }
         }
 
         DisplayBoard {
             squares,
+            game_state: initial_game_state,
             drag_state: DragState::None,
             drag_mouse_position: None,
         }
     }
 
-    pub fn draw_debug_info(&self, font: &Font) {
+    fn draw_to_screen(&self, texture: &PieceTextures, font: &Font) {
+        for idx in 0..64 {
+            let rank = idx / 8;
+            let file = idx % 8;
+            if let Some(square) = self.squares.get(rank).and_then(|r| r.get(file)) {
+                draw_square(rank, file, square.colour, square.piece, texture, font)
+            }
+        }
+
+        if let Some(mouse_position) = self.drag_mouse_position {
+            if let DragState::Started { piece, .. } | DragState::Dragging { piece, .. } =
+                self.drag_state
+            {
+                draw_piece_at_mouse_position(piece, mouse_position, texture)
+            }
+        }
+    }
+
+    fn update(&mut self) {
+        let mouse_position: Vec2 = mouse_position().into();
+
+        match self.drag_state {
+            DragState::None => self.dragstate_handler_none(mouse_position),
+            DragState::Started { piece, origin } => {
+                self.dragstate_handler_started(mouse_position, piece, origin)
+            }
+            DragState::Dragging { piece, origin } => {
+                self.dragstate_handler_dragging(mouse_position, piece, origin)
+            }
+        }
+    }
+
+    fn draw_debug_info(&self, font: &Font) {
         let mouse_position = mouse_position();
         let mouse_vec2: Vec2 = mouse_position.into();
         let coord = Self::mouse_pos_to_coordinate(mouse_vec2);
         let drag_state_str = match &self.drag_state {
             DragState::None => "DragState: None".to_string(),
-            DragState::Started { piece: _, origin: _ } => "DragState: Started".to_string(),
-            DragState::Dragging { piece: _, origin: _ } => "DragState: Dragging".to_string(),
+            DragState::Started {
+                piece: _,
+                origin: _,
+            } => "DragState: Started".to_string(),
+            DragState::Dragging {
+                piece: _,
+                origin: _,
+            } => "DragState: Dragging".to_string(),
         };
         let mouse_str = format!("Mouse: ({:.1}, {:.1})", mouse_vec2.x, mouse_vec2.y);
         let coord_str = match coord {
@@ -71,10 +153,10 @@ impl DisplayBoard {
             Some(c) => {
                 let piece = self.squares[c.rank as usize][c.file as usize].piece;
                 match piece {
-                    Some(Piece {kind, colour}) => format!("Piece: {colour:?} {kind:?}"),
+                    Some(Piece { kind, colour }) => format!("Piece: {colour:?} {kind:?}"),
                     None => "Piece: None".to_string(),
                 }
-            },
+            }
             None => "Piece: N/A".to_string(),
         };
 
@@ -95,57 +177,29 @@ impl DisplayBoard {
             y += 24.0; // vertical spacing between lines
         }
     }
+}
 
-    /// **Draws the DisplayBoard to the screen**
-    pub fn draw_to_screen(&self, texture: &PieceTextures, font: &Font) {
-
-        for idx in 0..64 {
-            let rank = idx / 8;
-            let file = idx % 8;
-            if let Some(square) = self.squares.get(rank).and_then(|r| r.get(file)) {
-                draw_square(rank, file, square.colour, square.piece, texture, font)
-            }
-        }
-
-        if let Some(mouse_position) = self.drag_mouse_position {
-            if let DragState::Started { piece, .. } | DragState::Dragging { piece, .. } = self.drag_state {
-                draw_piece_at_mouse_position(piece, mouse_position, texture)
-            }
-        }
-    }
-
-    pub fn update(&mut self) {
-        let mouse_position: Vec2 = mouse_position().into();
-        
-        match self.drag_state {
-            DragState::None => self.dragstate_handler_none(mouse_position),
-            DragState::Started { piece, origin} => self.dragstate_handler_started(mouse_position, piece, origin),
-            DragState::Dragging { piece, origin } => self.dragstate_handler_dragging(mouse_position, piece, origin),
-            }
-        }
-    
-    /// get piece on clicked square, mark as dragging with initial mouse location. only log piece and origin once
+impl DragStateHandling for DisplayBoard {
     fn dragstate_handler_none(&mut self, mouse_position: Vec2) {
-        let mouse_pressed = is_mouse_button_pressed(MouseButton::Right);
-        let mouse_down = is_mouse_button_down(MouseButton::Right);
-        let mouse_released = is_mouse_button_released(MouseButton::Right);
-       
-       // debug to remove
-        if mouse_pressed | mouse_down | mouse_released {
-            println!("Mouse pressed = {mouse_pressed}, down = {mouse_down}, released = {mouse_released} at {mouse_position}")
-        };
-
         if is_mouse_button_down(MouseButton::Right) {
             if let Some(coordinate) = Self::mouse_pos_to_coordinate(mouse_position) {
                 if let Some(piece) = self.clear_square(coordinate) {
-                    self.drag_state = DragState::Started{ piece, origin: coordinate };
+                    self.drag_state = DragState::Started {
+                        piece,
+                        origin: coordinate,
+                    };
                     self.drag_mouse_position = Some(mouse_position);
                 }
             }
         }
     }
 
-    fn dragstate_handler_started(&mut self, mouse_position: Vec2, piece: Piece, origin: BoardCoordinate) {
+    fn dragstate_handler_started(
+        &mut self,
+        mouse_position: Vec2,
+        piece: Piece,
+        origin: BoardCoordinate,
+    ) {
         if is_mouse_button_down(MouseButton::Right) {
             // if piece is held, move into drag mode
             self.drag_state = DragState::Dragging { piece, origin };
@@ -157,22 +211,55 @@ impl DisplayBoard {
             self.drag_mouse_position = None;
         }
     }
-    
-    fn dragstate_handler_dragging(&mut self, mouse_position: Vec2, piece: Piece, origin: BoardCoordinate) {
+
+    fn dragstate_handler_dragging(
+        &mut self,
+        mouse_position: Vec2,
+        piece: Piece,
+        origin: BoardCoordinate,
+    ) {
         self.drag_mouse_position = Some(mouse_position);
         if is_mouse_button_released(MouseButton::Right) {
-            let target_coordinate = Self::mouse_pos_to_coordinate(mouse_position).unwrap_or(origin);
-            self.add_to_square(target_coordinate, piece);
-            self.drag_state = DragState::None;
-            self.drag_mouse_position = None;
+            let target = Self::mouse_pos_to_coordinate(mouse_position).unwrap_or(origin);
+            let candidate_move = Move {
+                start_square: origin.to_usize(),
+                end_square: target.to_usize(),
+                piece_moved: piece.kind,
+                captured: None,
+                promotion: None,
+                move_type: MoveType::Normal,
+            }; // TODO all other move types need handling (capture, promotion, en passant, castling)
+
+            let relevant_legal_moves =
+                GameState::legal_moves_from(&self.game_state, origin.to_usize());
+
+            if Self::is_move_legal(&candidate_move, &relevant_legal_moves) {    
+                self.make_verified_move(target, piece);
+                self.game_state.make_move(candidate_move);
+            } else {
+                self.reset_on_null_move(origin, piece)
+            };
+            
         }
     }
-    
-    /*
+
+    fn make_verified_move(&mut self, target: BoardCoordinate, piece: Piece) {
+        self.add_to_square(target, piece);
+        self.drag_state = DragState::None;
+        self.drag_mouse_position = None;
+    }
+
+    fn reset_on_null_move(&mut self, origin: BoardCoordinate, piece: Piece) {
+        self.add_to_square(origin, piece);
+        self.drag_state = DragState::None;
+        self.drag_mouse_position = None;
+    }
+}
+
+impl SquareMethods for DisplayBoard {
     fn square_at_coordinate(&self, coordinate: BoardCoordinate) -> &Square {
         &self.squares[coordinate.rank as usize][coordinate.file as usize]
     }
-    */
 
     fn square_at_mutable(&mut self, coordinate: BoardCoordinate) -> &mut Square {
         &mut self.squares[coordinate.rank as usize][coordinate.file as usize]
@@ -187,10 +274,12 @@ impl DisplayBoard {
         let square = self.square_at_mutable(coordinate);
         square.piece.take()
     }
+}
 
+impl MouseFunctions for DisplayBoard {
     fn mouse_pos_to_coordinate(mouse: Vec2) -> Option<BoardCoordinate> {
-        let file = ((mouse.x - X_OFFSET)/ SQUARE_SIZE).floor() as i32;
-        let rank = 7 - ((mouse.y - Y_OFFSET)/ SQUARE_SIZE).floor() as i32;
+        let file = ((mouse.x - X_OFFSET) / SQUARE_SIZE).floor() as i32;
+        let rank = 7 - ((mouse.y - Y_OFFSET) / SQUARE_SIZE).floor() as i32;
 
         if (0..8).contains(&file) & (0..8).contains(&rank) {
             Some(BoardCoordinate {
@@ -210,17 +299,53 @@ impl DisplayBoard {
     }
 }
 
+impl HelperFunctions for DisplayBoard {
+    fn is_move_legal(candidate_move: &Move, legal_moves: &[Move]) -> bool {
+        legal_moves.contains(candidate_move)
+    }
+
+    /*
+    fn create_candidate_move(start: BoardCoordinate, end: BoardCoordinate, promotion_piece: Option<PieceKind>) -> Move {
+        Move {
+            start_square: start.to_usize(),
+            end_square: end.to_usize(),
+            piece_moved:
+            capture:
+            promotion: promotion_piece,
+        }
+    }
+    */
+}
+
 #[derive(Copy, Clone, Debug)]
 enum DragState {
     None,
-    Started { piece: Piece, origin: BoardCoordinate },
-    Dragging { piece: Piece, origin: BoardCoordinate },
+    Started {
+        piece: Piece,
+        origin: BoardCoordinate,
+    },
+    Dragging {
+        piece: Piece,
+        origin: BoardCoordinate,
+    },
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-struct BoardCoordinate {
+pub struct BoardCoordinate {
     rank: u8,
     file: u8,
+}
+impl BoardCoordinate {
+    fn to_usize(self) -> usize {
+        (self.rank * 8 + self.file) as usize
+    }
+
+    fn from_usize(square_index: usize) -> Self {
+        BoardCoordinate {
+            rank: (square_index / 8) as u8,
+            file: (square_index % 8) as u8,
+        }
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -335,7 +460,7 @@ fn draw_piece(rank: usize, file: usize, piece: Piece, textures: &PieceTextures) 
 
     draw_texture_ex(
         texture,
-        x + (SQUARE_SIZE - width) / 2.0 + X_OFFSET,          // centre aligned
+        x + (SQUARE_SIZE - width) / 2.0 + X_OFFSET, // centre aligned
         y + SQUARE_SIZE - height - VERTICAL_LIFT + Y_OFFSET, // bottoms aligned
         WHITE,
         DrawTextureParams {
@@ -346,11 +471,11 @@ fn draw_piece(rank: usize, file: usize, piece: Piece, textures: &PieceTextures) 
 
 fn draw_piece_at_mouse_position(piece: Piece, mouse_position: Vec2, textures: &PieceTextures) {
     let texture = textures.get(&piece);
-    
+
     let x = mouse_position[0] - texture.width() / 2.0;
-    let y= mouse_position[1] - texture.height() / 2.0;
-    let x_bounded = if x < 0. {0.1} else {x};
-    let y_bounded = if y < 0. {0.1} else {y};
+    let y = mouse_position[1] - texture.height() / 2.0;
+    let x_bounded = if x < 0. { 0.1 } else { x };
+    let y_bounded = if y < 0. { 0.1 } else { y };
 
     draw_texture_ex(
         texture,
@@ -363,7 +488,7 @@ fn draw_piece_at_mouse_position(piece: Piece, mouse_position: Vec2, textures: &P
     );
 }
 
-fn file_from_int(n: u8) -> Option<char> {
+pub fn file_from_int(n: u8) -> Option<char> {
     if (1..=8).contains(&n) {
         Some((b'a' + (n - 1)) as char)
     } else {
@@ -386,7 +511,7 @@ pub enum SoundEvent {
 pub struct SoundFX {
     move_start: Sound,
     move_made: Sound,
-    move_fail: Sound, 
+    move_fail: Sound,
     capture: Sound,
     castling: Sound,
     check: Sound,
@@ -405,7 +530,7 @@ impl SoundFX {
 impl SoundEffect {
     pub fn PlaySound(self) {
         match self {
-            MoveStart => 
+            MoveStart =>
             ...
         }
     }
@@ -415,7 +540,6 @@ impl SoundEffect {
 pub fn kill_game() -> bool {
     is_key_pressed(KeyCode::Escape)
 }
-
 
 pub fn draw_framerate(font: &Font) {
     let fps = get_fps();
@@ -431,4 +555,14 @@ pub fn draw_framerate(font: &Font) {
             ..Default::default()
         },
     );
+}
+
+pub fn window_conf() -> Conf {
+    Conf {
+        window_title: "Chess".to_string(),
+        window_width: 800,
+        window_height: 800,
+        fullscreen: true,
+        ..Default::default()
+    }
 }
