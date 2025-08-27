@@ -53,4 +53,4 @@ def write_attack_masks(filename, attacks_dict):
         for k, v in attacks_dict.items():
             f.write(format_array(k, v))
 
-write_attack_masks('attack_masks/masks.rs', attacks_dict)
+write_attack_masks('src/attack_masks/masks.rs', attacks_dict)

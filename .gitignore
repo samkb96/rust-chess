@@ -3,19 +3,15 @@ target/
 **/*.rs.bk
 **/*.rs~
 
-# Cargo dependencies
 Cargo.lock
 
-# VSCode
 .vscode/
-
-# Logs and temporary files
+.venv
 *.log
 *.tmp
 *.swp
 .DS_Store
 
-# Folders
 svgs/
 inkscape/
 images/
