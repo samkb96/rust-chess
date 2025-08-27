@@ -1,4 +1,5 @@
 use crate::game::*;
+use crate::attack_masks::masks::*;
 use arrayvec::ArrayString;
 use macroquad::prelude::*;
 
@@ -341,7 +342,10 @@ impl GameState {
     }
 
     fn pseudolegal_moves(&self) -> Vec<Move> {
-        self.pawn_moves(self.side_to_move)
+        let mut psl_moves: Vec<Move> = Vec::new();
+        psl_moves.extend(self.pawn_moves(self.side_to_move));
+        psl_moves.extend(self.knight_moves(self.side_to_move));
+        psl_moves
     }
 
     fn legal_moves(&self) -> Vec<Move> {
@@ -389,6 +393,50 @@ impl GameState {
                     }
                 }
             }
+            // TODO pawn captures inc en passant and promotion captures
+        }
+        moves
+    }
+
+    fn knight_moves(&self, piece_colour: PieceColour) -> Vec<Move> {
+        let mut moves = Vec::new();
+        let mut knights = self.bitboards.pieces[piece_colour as usize][1];
+
+        while let Some(start) = pop_lsb(&mut knights) {
+            // get attack board for square
+            let mut knight_mask = KNIGHT_ATTACKS[start];
+            // loop over possible target squares
+            while let Some(end) = pop_lsb(&mut knight_mask) {
+                if is_empty(self.bitboards.occupied, end) {
+                    moves.push(Move {
+                        start_square: start,
+                        end_square: end,
+                        piece_moved: PieceKind::Knight,
+                        captured: None,
+                        promotion: None,
+                        move_type: MoveType::Normal,
+                    });
+                }
+                // captures
+                // FIXME: doesn't work for some reason
+                let enemies = match piece_colour {
+                    PieceColour::White => self.bitboards.black_pieces,
+                    PieceColour::Black => self.bitboards.white_pieces,
+                };
+
+                if is_capturable(enemies, end) {
+                    let captured_piece = self.bitboards.enemy_at_square(end, piece_colour);
+                    moves.push(Move {
+                        start_square: start,
+                        end_square: end,
+                        piece_moved: PieceKind::Knight,
+                        captured: captured_piece,
+                        promotion: None,
+                        move_type: MoveType::Normal,
+                    })
+                }
+            }
+
         }
         moves
     }
@@ -448,6 +496,10 @@ fn push_pawn_move(moves: &mut Vec<Move>, start: usize, end: usize, promotion_ran
 
 fn is_empty(occupied: u64, square_index: usize) -> bool {
     (occupied & (1u64 << square_index)) == 0
+}
+
+fn is_capturable(enemies: u64, square_index: usize) -> bool {
+    (enemies & (1u64 << square_index)) == 0
 }
 
 fn is_promotion_rank(colour: PieceColour, square_index: usize) -> bool {
@@ -539,6 +591,16 @@ impl BitBoards {
         )
     }
 
+    fn enemy_at_square(&self, square: usize, piece_colour: PieceColour) -> Option<PieceKind> {
+        let enemy_bitboards = self.pieces[1 - (piece_colour as usize)];
+        for (index, bitboard) in enemy_bitboards.iter().enumerate() {
+            if bitboard & (1u64 >> square) != 0 {
+                return Some(PieceKind::try_from(index).unwrap())
+            }
+        };
+        None
+    }
+    
     fn piece_kind_at_square(boards: [u64; 6], square_bit: u64) -> Option<PieceKind> {
         for (kind_index, &bitboard) in boards.iter().enumerate() {
             if bitboard & square_bit != 0 {

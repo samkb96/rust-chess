@@ -2,6 +2,7 @@
 
 mod game;
 mod mechanics;
+mod attack_masks;
 use game::*;
 use macroquad::prelude::*;
 use mechanics::*;
