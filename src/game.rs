@@ -14,6 +14,7 @@ pub const Y_OFFSET: f32 = 120.;
 const BOARD_SIZE: usize = 8;
 const DARK_COLOUR: Color = color_u8!(118, 150, 86, 255);
 const LIGHT_COLOUR: Color = color_u8!(238, 238, 210, 255);
+const LEGAL_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(223, 83, 53, 56);
 const SQUARE_COLOURS: [SquareColour; 2] = [SquareColour::Dark, SquareColour::Light];
 
 pub const STARTING_POSITION_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -23,6 +24,8 @@ pub struct DisplayBoard {
     pub game_state: GameState,
     drag_state: DragState,
     drag_mouse_position: Option<Vec2>,
+    legal_move_highlights: Vec<usize>,
+    last_move_highlight: Option<usize>
 }
 
 /// main DisplayBoard methods called in main loop
@@ -67,6 +70,7 @@ trait MouseFunctions {
 
 trait HelperFunctions {
     fn is_move_legal(candidate_move: &Move, legal_moves: &[Move]) -> bool;
+    fn legal_move_highlights(&self);
     //fn create_candidate_move(start: BoardCoordinate,end: BoardCoordinate, promotion: Option<PieceKind>) -> Move;
 }
 
@@ -94,6 +98,8 @@ impl CoreMethods for DisplayBoard {
             game_state: initial_game_state,
             drag_state: DragState::None,
             drag_mouse_position: None,
+            legal_move_highlights: Vec::new(),
+            last_move_highlight: None,
         }
     }
 
@@ -104,7 +110,10 @@ impl CoreMethods for DisplayBoard {
             if let Some(square) = self.squares.get(rank).and_then(|r| r.get(file)) {
                 draw_square(rank, file, square.colour, square.piece, texture, font)
             }
+
         }
+
+        self.legal_move_highlights();
 
         if let Some(mouse_position) = self.drag_mouse_position {
             if let DragState::Started { piece, .. } | DragState::Dragging { piece, .. } =
@@ -113,6 +122,7 @@ impl CoreMethods for DisplayBoard {
                 draw_piece_at_mouse_position(piece, mouse_position, texture)
             }
         }
+
     }
 
     fn update(&mut self) {
@@ -219,6 +229,12 @@ impl DragStateHandling for DisplayBoard {
         origin: BoardCoordinate,
     ) {
         self.drag_mouse_position = Some(mouse_position);
+        let relevant_legal_moves =
+                GameState::legal_moves_from(&self.game_state, origin.to_usize());
+            self.legal_move_highlights = relevant_legal_moves
+                .iter()
+                .map(|m| m.end_square)
+                .collect();
         if is_mouse_button_released(MouseButton::Right) {
             let target = Self::mouse_pos_to_coordinate(mouse_position).unwrap_or(origin);
             let candidate_move = Move {
@@ -230,15 +246,13 @@ impl DragStateHandling for DisplayBoard {
                 move_type: MoveType::Normal,
             }; // TODO all other move types need handling (capture, promotion, en passant, castling)
 
-            let relevant_legal_moves =
-                GameState::legal_moves_from(&self.game_state, origin.to_usize());
-
             if Self::is_move_legal(&candidate_move, &relevant_legal_moves) {    
                 self.make_verified_move(target, piece);
                 self.game_state.make_move(candidate_move);
             } else {
                 self.reset_on_null_move(origin, piece)
             };
+            self.legal_move_highlights = Vec::new();
             
         }
     }
@@ -304,6 +318,22 @@ impl HelperFunctions for DisplayBoard {
         legal_moves.contains(candidate_move)
     }
 
+    fn legal_move_highlights(&self) {
+        for square_index in self.legal_move_highlights.iter() {
+            let rank = square_index / 8;
+            let file = square_index % 8;
+            let square_coords = (
+                file as f32 * SQUARE_SIZE + X_OFFSET,
+                (BOARD_SIZE - 1 - rank) as f32 * SQUARE_SIZE + Y_OFFSET,
+            );
+            draw_rectangle(
+                square_coords.0, 
+                square_coords.1, 
+                SQUARE_SIZE, 
+                SQUARE_SIZE, 
+                LEGAL_MOVE_HIGHLIGHT_COLOUR);
+        }
+    }
     /*
     fn create_candidate_move(start: BoardCoordinate, end: BoardCoordinate, promotion_piece: Option<PieceKind>) -> Move {
         Move {

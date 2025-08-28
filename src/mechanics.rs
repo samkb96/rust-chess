@@ -393,8 +393,46 @@ impl GameState {
                     }
                 }
             }
-            // TODO pawn captures inc en passant and promotion captures
+            
+            let mut pawn_attack_mask = match piece_colour {
+                PieceColour::White => WHITE_PAWN_ATTACKS[start],
+                PieceColour::Black => BLACK_PAWN_ATTACKS[start],
+            };
+
+            while let Some(end) = pop_lsb(&mut pawn_attack_mask) {
+                let enemy_colour = PieceColour::try_from(1 - piece_colour as usize).unwrap();
+                
+                if let Some(captured_piece) = self.bitboards.enemy_at_square(end, enemy_colour) {
+                    if is_promotion_rank(piece_colour, start) {
+                        for promotion_piece in [
+                            PieceKind::Queen,
+                            PieceKind::Knight,
+                            PieceKind::Rook,
+                            PieceKind::Bishop,
+                        ] {
+                            moves.push({Move {
+                                start_square: start,
+                                end_square: end,
+                                piece_moved: PieceKind::Pawn,
+                                captured: Some(captured_piece),
+                                promotion: Some(promotion_piece),
+                                move_type: MoveType::Normal,
+                            }})
+                        }
+                    } else {
+                        moves.push(Move{
+                            start_square: start,
+                            end_square: end,
+                            piece_moved: PieceKind::Pawn,
+                            captured: Some(captured_piece),
+                            promotion: None,
+                            move_type: MoveType::Normal
+                        })
+                    }
+                }
+            }
         }
+        // TODO enpassant
         moves
     }
 
@@ -424,8 +462,10 @@ impl GameState {
                     PieceColour::Black => self.bitboards.white_pieces,
                 };
 
+                let enemy_colour = PieceColour::try_from(1 - piece_colour as usize).unwrap();
+
                 if is_capturable(enemies, end) {
-                    let captured_piece = self.bitboards.enemy_at_square(end, piece_colour);
+                    let captured_piece = self.bitboards.enemy_at_square(end, enemy_colour);
                     moves.push(Move {
                         start_square: start,
                         end_square: end,
@@ -438,6 +478,44 @@ impl GameState {
             }
 
         }
+        moves
+    }
+
+    fn king_moves(&self, piece_colour: PieceColour) -> Vec<Move> {
+        let mut moves: Vec<Move> = Vec::new();
+        let mut king_bb = self.bitboards.pieces[piece_colour as usize][5];
+        let start = pop_lsb(&mut king_bb).unwrap();
+        let mut attack_mask = KING_ATTACKS[start];
+
+        while let Some(end) = pop_lsb(&mut attack_mask) {
+            if is_empty(self.bitboards.occupied, end) {
+                moves.push(Move {
+                    start_square: start,
+                    end_square: end,
+                    piece_moved: PieceKind::King,
+                    captured: None,
+                    promotion: None,
+                    move_type: MoveType::Normal,
+                })
+            };
+
+            let enemies = match piece_colour {
+                PieceColour::White => self.bitboards.black_pieces,
+                PieceColour::Black => self.bitboards.white_pieces,
+            };
+
+            if is_capturable(enemies, end) {
+                let enemy = self.bitboards.enemy_at_square(end, piece_colour);
+                moves.push({Move {
+                    start_square: start,
+                    end_square: end,
+                    piece_moved: PieceKind::King,
+                    captured: enemy,
+                    promotion: None,
+                    move_type: MoveType::Normal,
+                }})
+                }
+        };
         moves
     }
 
@@ -456,7 +534,6 @@ impl GameState {
             .collect()
     }
 }
-
 #[derive(Default, Clone)]
 pub struct BitBoards {
     pieces: [[u64; 6]; 2], // accessed like pieces[piece_colour][piece_kind]
