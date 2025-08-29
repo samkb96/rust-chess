@@ -1,0 +1,30 @@
+Move types within legal move generator
+
+Pawn
+- one step [x]
+- two steps [x]
+- capture [ ]
+- en passant [ ]
+- promotion [x]
+- capture promotion [ ]
+
+Knight
+- Regular [x]
+- Capture [x]
+
+Bishop 
+- Regular [ ]
+- Capture [ ]
+
+Rook 
+- Regular [ ]
+- Capture [ ]
+
+Queen
+- Regular [ ]
+- Capture [ ]
+
+King
+- Regular [ ]
+- Capture [ ] 
+- Castling [ ]

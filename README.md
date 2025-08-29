@@ -21,10 +21,10 @@ Aims:
 - [ ] Sound effects in Ableton
 
 ### Rules and Moves
-- [ ] Bitboard interfacing
+- [x] Bitboard interfacing
 - [ ] Encode rules, move generation
 - [ ] Possible positions after n moves counter to test rule implementation
-- [ ] Move validation, legal move highlights
+- [x] Move validation, legal move highlights
 - [ ] Implement game state (check, checkmate, stalemate)
 - [ ] Time control
 
