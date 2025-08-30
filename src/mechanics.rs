@@ -16,6 +16,9 @@ pub const PIECE_COLOURS: [PieceColour; 2] = [PieceColour::White, PieceColour::Bl
 
 // 0-3 are increasing along the ray; 4-7 decreasing
 const ATTACK_MASKS: [[u64; 64]; 8] = [NORTHWEST_RAY, NORTH_RAY, NORTHEAST_RAY, EAST_RAY, SOUTHEAST_RAY, SOUTH_RAY, SOUTHWEST_RAY, WEST_RAY];
+const BISHOP_DIRECTIONS: [usize; 4] = [0, 2, 4, 6];
+const ROOK_DIRECTIONS: [usize; 4] = [1, 3, 5, 7];
+const QUEEN_DIRECTIONS: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum PieceColour {
@@ -65,6 +68,13 @@ pub struct Piece {
     pub colour: PieceColour,
 }
 impl Piece {
+    fn new(piece_colour: PieceColour, piece_kind: PieceKind) -> Self {
+        Piece {
+            colour: piece_colour,
+            kind: piece_kind
+        }
+    }
+
     pub fn from_fen_char(c: char) -> Option<Piece> {
         let piece_colour = if c.is_uppercase() {
             PieceColour::Black
@@ -80,18 +90,7 @@ impl Piece {
             'k' => PieceKind::King,
             _ => return None,
         };
-        Some(Piece {
-            kind: piece_kind,
-            colour: piece_colour,
-        })
-    }
-
-    pub fn to_fen_char(self) -> char {
-        let fen_char = PIECE_ID_TO_FEN[self.kind as usize];
-        match self.colour {
-            PieceColour::White => fen_char,
-            PieceColour::Black => fen_char.to_ascii_uppercase(),
-        }
+        Some(Piece::new(piece_colour, piece_kind))
     }
 
     pub fn to_image_name(self) -> ArrayString<2> {
@@ -134,6 +133,7 @@ pub struct GameState {
     halfmove_clock: u8,
     fullmove_number: u16,
 }
+// core methods
 impl GameState {
     pub fn initialise() -> Self {
         GameState {
@@ -174,7 +174,7 @@ impl GameState {
             self.bitboards.pieces[colour_moved as usize][piece_moved as usize] ^= end_bitboard;
         } else {
             // add promoted piece
-            let promotion_piece = move_to_make.promotion.unwrap();
+            let promotion_piece = move_to_make.promotion.expect("Non-promotion move snuck into promotion logic");
             self.bitboards.pieces[colour_moved as usize][promotion_piece as usize] ^=
                 end_bitboard;
         }
@@ -198,7 +198,7 @@ impl GameState {
         if move_type == MoveType::EnPassant {
             // square to remove pawn from is the location of the double push
             // so 1 rank behind en_passant_square if white captures
-            let captured_pawn_square = self.en_passant_square.unwrap() << match colour_moved {
+            let captured_pawn_square = self.en_passant_square.expect("Non-en passant move snuck into EP logic") << match colour_moved {
                 PieceColour::White => -8,
                 PieceColour::Black => 8,
             };
@@ -208,6 +208,250 @@ impl GameState {
         self.bitboards.recompute_aggregates();
         self.update_internal_state_params( &move_to_make)
 
+    }
+
+    pub fn legal_moves_from(&self, start: usize) -> Vec<Move> {
+        self.legal_moves()
+            .into_iter()
+            .filter(|m| m.start_square == start)
+            .collect()
+    }
+}
+
+// movegen
+impl GameState {
+    fn pseudolegal_moves(&self) -> Vec<Move> {
+        let mut psl_moves: Vec<Move> = Vec::new();
+        psl_moves.extend(self.pawn_moves(self.side_to_move));
+        psl_moves.extend(self.knight_moves(self.side_to_move));
+        psl_moves.extend(self.bishop_moves(self.side_to_move));
+        psl_moves.extend(self.rook_moves(self.side_to_move));
+        psl_moves.extend(self.queen_moves(self.side_to_move));
+        psl_moves.extend(self.king_moves(self.side_to_move));
+        psl_moves
+    }
+
+    fn pawn_moves(&self, piece_colour: PieceColour) -> Vec<Move> {
+        let mut moves: Vec<Move> = Vec::new();
+
+        let mut pawns = self.bitboards.pieces[piece_colour as usize][0];
+
+        while let Some(start) = pop_lsb(&mut pawns) {
+
+            // one square forward
+            let one_step: i8 = match piece_colour {
+                PieceColour::White => 8,
+                PieceColour::Black => -8,
+            };
+
+            let end = (start as i8 + one_step) as usize;
+            if !(0..64).contains(&end) {
+                continue;
+            }
+            if is_empty(self.bitboards.occupied, end) {
+                if is_promotion_rank(piece_colour, end) {
+                    moves.extend(Move::promotions(start, end, None))
+                } else {
+                    moves.push(Move::quiet(start, end, PieceKind::Pawn))
+                }
+
+                // two squares behaviour within check to see if first square empty
+                if is_double_push_rank(piece_colour, start) {
+                    let end = (end as i8 + one_step) as usize;
+                    if is_empty(self.bitboards.occupied, end) {
+                        moves.push(Move::quiet(start, end, PieceKind::Pawn));
+                    }
+                }
+            }
+            
+            
+            let mut pawn_attack_mask = match piece_colour {
+                PieceColour::White => WHITE_PAWN_ATTACKS[start],
+                PieceColour::Black => BLACK_PAWN_ATTACKS[start],
+            };
+
+            while let Some(end) = pop_lsb(&mut pawn_attack_mask) {
+                if let Some(captured_piece) = self.bitboards.enemy_at_square(end, piece_colour) {
+                    if is_promotion_rank(piece_colour, start) {
+                        moves.extend(Move::promotions(start, end, Some(captured_piece)))
+                    } else {
+                        moves.push(Move::capture(start, end, PieceKind::Pawn, captured_piece))
+                    }
+                }
+            }
+        }
+        // TODO enpassant
+        moves
+    }
+
+    fn knight_moves(&self, piece_colour: PieceColour) -> Vec<Move> {
+        let mut moves = Vec::new();
+        let mut knights = self.bitboards.pieces[piece_colour as usize][1];
+
+        while let Some(start) = pop_lsb(&mut knights) {
+            // get attack board for square
+            let mut knight_mask = KNIGHT_ATTACKS[start];
+            // loop over possible target squares
+            while let Some(end) = pop_lsb(&mut knight_mask) {
+                if is_empty(self.bitboards.occupied, end) {
+                    moves.push(Move::quiet(start, end, PieceKind::Knight));
+                }
+                // captures
+                let enemies = match piece_colour {
+                    PieceColour::White => self.bitboards.black_pieces,
+                    PieceColour::Black => self.bitboards.white_pieces,
+                };
+
+
+                if is_capturable(enemies, end) {
+                    let captured_piece = self.bitboards.enemy_at_square(end, piece_colour).expect("Uncapturable piece snuck into knight captures");
+                    moves.push(Move::capture(start, end, PieceKind::Knight, captured_piece));
+                }
+            }
+
+        }
+        moves
+    }
+
+    fn bishop_moves(&self, piece_colour: PieceColour) -> Vec<Move> {
+        let mut moves: Vec<Move> = vec![];
+        let piece = Piece::new(piece_colour, PieceKind::Bishop);
+        let mut bishops = self.bitboards.pieces[piece_colour as usize][2];
+
+        while let Some(start) = pop_lsb(&mut bishops) {
+            moves.extend(self.slider_moves(start, piece, &BISHOP_DIRECTIONS));
+        }
+        moves
+    }
+
+    fn rook_moves(&self, piece_colour: PieceColour) -> Vec<Move> {
+        let mut moves: Vec<Move> = vec![];
+        let piece = Piece::new(piece_colour, PieceKind::Rook);
+        let mut rooks = self.bitboards.pieces[piece_colour as usize][3];
+
+        while let Some(start) = pop_lsb(&mut rooks) {
+            moves.extend(self.slider_moves(start, piece, &ROOK_DIRECTIONS));
+        }
+        moves
+    }
+
+    fn queen_moves(&self, piece_colour: PieceColour) -> Vec<Move> {
+        let mut moves: Vec<Move> = vec![];
+        let piece = Piece::new(piece_colour, PieceKind::Queen);
+        let mut queens = self.bitboards.pieces[piece_colour as usize][4];
+
+        while let Some(start) = pop_lsb(&mut queens) {
+            moves.extend(self.slider_moves(start, piece, &QUEEN_DIRECTIONS));
+        }
+        moves
+    }
+
+    fn slider_moves(&self, start: usize, piece: Piece, directions: &[usize]) -> Vec<Move> {
+        let mut moves: Vec<Move> = Vec::new();
+        let occupied = self.bitboards.occupied;
+
+        for &direction in directions {
+            let mut ray = ATTACK_MASKS[direction][start];
+            let blockers = ray & occupied;
+
+            if blockers != 0 {
+                let blocker_square = Self::closest_blocker(direction, blockers);
+
+                ray &= Self::mask_up_to_exclusive(start, &direction, blocker_square);
+
+                // if blocker is capturable, capture it
+                if let Some(target_piece) = self.bitboards.piece_at_square(blocker_square) {
+                    if target_piece.colour != piece.colour {
+                        moves.push(Move::capture(start, blocker_square, piece.kind, target_piece.kind));
+                    }
+                }
+                // otherwise, append quiet moves
+                while let Some(end) = pop_lsb(&mut ray) {
+                    moves.push(Move::quiet(start, end, piece.kind))
+                }
+            } else {
+                while let Some(end) = pop_lsb(&mut ray) {
+                    moves.push(Move::quiet(start, end, piece.kind))
+                }
+            }
+        }
+        moves
+    }
+
+    fn king_moves(&self, piece_colour: PieceColour) -> Vec<Move> {
+        let mut moves: Vec<Move> = Vec::new();
+        let mut king_bb = self.bitboards.pieces[piece_colour as usize][5];
+        let start = pop_lsb(&mut king_bb).expect("No king of colour {piece_colour} left on the board");
+        let mut attack_mask = KING_ATTACKS[start];
+
+        while let Some(end) = pop_lsb(&mut attack_mask) {
+            if is_empty(self.bitboards.occupied, end) {
+                moves.push(Move {
+                    start_square: start,
+                    end_square: end,
+                    piece_moved: PieceKind::King,
+                    captured: None,
+                    promotion: None,
+                    move_type: MoveType::Normal,
+                })
+            };
+
+            let enemies = match piece_colour {
+                PieceColour::White => self.bitboards.black_pieces,
+                PieceColour::Black => self.bitboards.white_pieces,
+            };
+
+            if is_capturable(enemies, end) {
+                let enemy = self.bitboards.enemy_at_square(end, piece_colour);
+
+                moves.push({Move {
+                    start_square: start,
+                    end_square: end,
+                    piece_moved: PieceKind::King,
+                    captured: enemy,
+                    promotion: None,
+                    move_type: MoveType::Normal,
+                }})
+                }
+        };
+        moves
+    }
+
+}
+
+// misc helpers
+impl GameState {
+
+    fn closest_blocker(direction: usize, blockers: u64) -> usize {
+        match direction {
+            0..4 => index_lsb(blockers).expect("No LSB found"),
+            4..8 => index_msb(blockers).expect("No MSB found"),
+            _ => unreachable!("direction index overflow")
+        }
+    }
+
+    fn mask_up_to_exclusive(start: usize, direction: &usize, blocker_square: usize) -> u64 {
+        let step = match direction {
+            0 => 7,
+            1 => 8,
+            2 => 9,
+            3 => 1,
+            4 => -7,
+            5 => -8,
+            6 => -9,
+            7 => -1,
+            _ => unreachable!()
+        };
+
+        let mut mask = 0u64;
+        let mut square = start as isize;
+
+        loop {
+            square += step;
+            if (0..64).contains(&square) | (square == blocker_square as isize) { break };
+            mask |= 1u64 << square;
+        }
+        mask 
     }
 
     fn update_internal_state_params(&mut self, move_made: &Move) {
@@ -271,204 +515,6 @@ impl GameState {
             PieceColour::Black => {self.side_to_move = PieceColour::White;},
         }
     }
-
-    fn pseudolegal_moves(&self) -> Vec<Move> {
-        let mut psl_moves: Vec<Move> = Vec::new();
-        psl_moves.extend(self.pawn_moves(self.side_to_move));
-        psl_moves.extend(self.knight_moves(self.side_to_move));
-        psl_moves.extend(self.king_moves(self.side_to_move));
-        psl_moves
-    }
-
-    fn pawn_moves(&self, piece_colour: PieceColour) -> Vec<Move> {
-        let mut moves: Vec<Move> = Vec::new();
-
-        let mut pawns = self.bitboards.pieces[piece_colour as usize][0];
-
-        while let Some(start) = pop_lsb(&mut pawns) {
-
-            // one square forward
-            let one_step: i8 = match piece_colour {
-                PieceColour::White => 8,
-                PieceColour::Black => -8,
-            };
-
-            let end = (start as i8 + one_step) as usize;
-            if !(0..64).contains(&end) {
-                continue;
-            }
-            if is_empty(self.bitboards.occupied, end) {
-                if is_promotion_rank(piece_colour, end) {
-                    moves.extend(Move::promotions(start, end, None))
-                } else {
-                    moves.push(Move::quiet(start, end, PieceKind::Pawn))
-                }
-
-                // two squares behaviour within check to see if first square empty
-                if is_double_push_rank(piece_colour, start) {
-                    let end = (end as i8 + one_step) as usize;
-                    if is_empty(self.bitboards.occupied, end) {
-                        moves.push(Move::quiet(start, end, PieceKind::Pawn));
-                    }
-                }
-            }
-            
-            
-            let mut pawn_attack_mask = match piece_colour {
-                PieceColour::White => WHITE_PAWN_ATTACKS[start],
-                PieceColour::Black => BLACK_PAWN_ATTACKS[start],
-            };
-
-            while let Some(end) = pop_lsb(&mut pawn_attack_mask) {
-                let enemy_colour = PieceColour::try_from(1 - piece_colour as usize).unwrap();
-
-                if let Some(captured_piece) = self.bitboards.enemy_at_square(end, enemy_colour) {
-                    if is_promotion_rank(piece_colour, start) {
-                        moves.extend(Move::promotions(start, end, Some(captured_piece)))
-                    } else {
-                        moves.push(Move::capture(start, end, PieceKind::Pawn, captured_piece))
-                    }
-                }
-            }
-        }
-        // TODO enpassant
-        moves
-    }
-
-    fn knight_moves(&self, piece_colour: PieceColour) -> Vec<Move> {
-        let mut moves = Vec::new();
-        let mut knights = self.bitboards.pieces[piece_colour as usize][1];
-
-        while let Some(start) = pop_lsb(&mut knights) {
-            // get attack board for square
-            let mut knight_mask = KNIGHT_ATTACKS[start];
-            // loop over possible target squares
-            while let Some(end) = pop_lsb(&mut knight_mask) {
-                if is_empty(self.bitboards.occupied, end) {
-                    moves.push(Move::quiet(start, end, PieceKind::Knight));
-                }
-                // captures
-                let enemies = match piece_colour {
-                    PieceColour::White => self.bitboards.black_pieces,
-                    PieceColour::Black => self.bitboards.white_pieces,
-                };
-
-
-                if is_capturable(enemies, end) {
-                    let captured_piece = self.bitboards.enemy_at_square(end, piece_colour).unwrap();
-                    moves.push(Move::capture(start, end, PieceKind::Knight, captured_piece));
-                }
-            }
-
-        }
-        moves
-    }
-
-    fn bishop_moves(&self, piece_colour: PieceColour) -> Vec<Move> {
-        unimplemented!()
-    }
-
-    fn slider_moves(&self, start: usize, piece: Piece, directions: &[usize]) {
-        let mut moves: Vec<Move> = Vec::new();
-        let occupied = self.bitboards.occupied;
-
-        for &direction in directions {
-            let mut ray = ATTACK_MASKS[direction][start];
-            let blockers = ray & occupied;
-
-            if blockers != 0 {
-                let blocker_square = Self::closest_blocker(direction, blockers);
-
-                ray &= mask_up_to_inclusive(start, direction, blocker_square);
-
-                // if blocker is capturable, capture it
-                if let Some(target_piece) = self.bitboards.piece_at_square(blocker_square) {
-                    if target_piece.colour != piece.colour {
-                        moves.push(Move::capture(start, blocker_square, piece.kind, target_piece.kind));
-                    }
-                }
-            }
-        }
-    }
-
-    fn closest_blocker(direction: usize, blockers: u64) -> usize {
-        match direction {
-            0..4 => index_lsb(blockers).unwrap(),
-            4..8 => index_msb(blockers).unwrap(),
-            _ => unreachable!("direction index overflow")
-        }
-    }
-
-    fn mask_up_to_inclusive(start: usize, direction: &usize, blocker_square: usize) {
-        let step = match direction {
-            0 => 7,
-            1 => 8,
-            2 => 9,
-            3 => 1,
-            4 => -7,
-            5 => -8,
-            6 => -9,
-            7 => -1,
-            _ => unreachable!()
-        };
-        // TODO finish
-    }
-
-
-
-    fn king_moves(&self, piece_colour: PieceColour) -> Vec<Move> {
-        let mut moves: Vec<Move> = Vec::new();
-        let mut king_bb = self.bitboards.pieces[piece_colour as usize][5];
-        let start = pop_lsb(&mut king_bb).unwrap();
-        let mut attack_mask = KING_ATTACKS[start];
-
-        while let Some(end) = pop_lsb(&mut attack_mask) {
-            if is_empty(self.bitboards.occupied, end) {
-                moves.push(Move {
-                    start_square: start,
-                    end_square: end,
-                    piece_moved: PieceKind::King,
-                    captured: None,
-                    promotion: None,
-                    move_type: MoveType::Normal,
-                })
-            };
-
-            let enemies = match piece_colour {
-                PieceColour::White => self.bitboards.black_pieces,
-                PieceColour::Black => self.bitboards.white_pieces,
-            };
-
-            if is_capturable(enemies, end) {
-                let enemy = self.bitboards.enemy_at_square(end, piece_colour);
-
-                moves.push({Move {
-                    start_square: start,
-                    end_square: end,
-                    piece_moved: PieceKind::King,
-                    captured: enemy,
-                    promotion: None,
-                    move_type: MoveType::Normal,
-                }})
-                }
-        };
-        moves
-    }
-
-    fn is_in_check(&self) {
-        // to do; use is_square_attacked on king positions
-    }
-
-    fn is_square_attacked(&self) {
-        // to do
-    }
-
-    pub fn legal_moves_from(&self, start: usize) -> Vec<Move> {
-        self.legal_moves()
-            .into_iter()
-            .filter(|m| m.start_square == start)
-            .collect()
-    }
 }
 #[derive(Default, Clone)]
 pub struct BitBoards {
@@ -476,35 +522,6 @@ pub struct BitBoards {
     pub white_pieces: u64,
     pub black_pieces: u64,
     occupied: u64,
-}
-
-fn push_pawn_move(moves: &mut Vec<Move>, start: usize, end: usize, promotion_rank: bool) {
-    if promotion_rank {
-        for piece_kind in [
-            PieceKind::Queen,
-            PieceKind::Knight,
-            PieceKind::Rook,
-            PieceKind::Bishop,
-        ] {
-            moves.push(Move {
-                start_square: start,
-                end_square: end,
-                piece_moved: PieceKind::Pawn,
-                captured: None,
-                promotion: Some(piece_kind),
-                move_type: MoveType::Normal,
-            })
-        }
-    } else {
-        moves.push(Move {
-            start_square: start,
-            end_square: end,
-            piece_moved: PieceKind::Pawn,
-            captured: None,
-            promotion: None,
-            move_type: MoveType::Normal,
-        })
-    }
 }
 
 fn is_empty(occupied: u64, square_index: usize) -> bool {
@@ -525,22 +542,6 @@ fn is_promotion_rank(colour: PieceColour, square_index: usize) -> bool {
 fn is_double_push_rank(piece_colour: PieceColour, start: usize) -> bool {
     (piece_colour == PieceColour::White) & ((8..16).contains(&start)) | 
     (piece_colour == PieceColour::Black) & ((48..56).contains(&start))
-}
-
-pub fn print_bitboard(bb: u64) {
-    for rank in (0..8).rev() {
-        for file in 0..8 {
-            let square_index = rank * 8 + file;
-            let mask = 1u64 << square_index;
-            if bb & mask != 0 {
-                print!("1 ");
-            } else {
-                print!(". ");
-            }
-        }
-        println!();
-    }
-    println!();
 }
 
 impl BitBoards {
@@ -578,10 +579,6 @@ impl BitBoards {
         bitboard
     }
 
-    fn is_bitboard_square_set(bitboard: u64, square_index: usize) -> bool {
-        bitboard >> square_index & 1 != 0
-    }
-
     pub fn piece_at_square(&self, square_index: usize) -> Option<Piece> {
         let square_bit = 1u64 << square_index;
 
@@ -597,10 +594,10 @@ impl BitBoards {
 
         for kind_index in 0..6 {
             if self.pieces[colour as usize][kind_index] & square_bit != 0 {
-                return Some(Piece {
-                    kind: PieceKind::try_from(kind_index).unwrap(),
+                return Some(Piece::new(
                     colour,
-                });
+                    PieceKind::try_from(kind_index).unwrap(),
+                ));
             }
         }
 
@@ -613,18 +610,9 @@ impl BitBoards {
         let enemy_bitboards = self.pieces[1 - (piece_colour as usize)];
         for (index, bitboard) in enemy_bitboards.iter().enumerate() {
             if bitboard & (1u64 << square) != 0 {
-                return Some(PieceKind::try_from(index).unwrap())
+                return Some(PieceKind::try_from(index).expect("PieceKind index out of bounds"))
             }
         };
-        None
-    }
-    
-    fn piece_kind_at_square(boards: [u64; 6], square_bit: u64) -> Option<PieceKind> {
-        for (kind_index, &bitboard) in boards.iter().enumerate() {
-            if bitboard & square_bit != 0 {
-                return Some(PIECE_KINDS[kind_index]);
-            }
-        }
         None
     }
 }
@@ -709,10 +697,4 @@ fn pop_lsb(bitboard: &mut u64) -> Option<usize> {
     let lsb_idx = index_lsb(*bitboard)?;
     *bitboard &= *bitboard - 1;
     Some(lsb_idx)
-}
-
-fn pop_msb(bitboard: &mut u64) -> Option<usize> {
-    let msb_idx = index_msb(*bitboard)?;
-    *bitboard &= !(1u64 << msb_idx);
-    Some(msb_idx)
 }

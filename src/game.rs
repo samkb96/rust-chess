@@ -52,6 +52,7 @@ impl Board {
 
         self.legal_move_highlights();
         self.last_move_highlights();
+        
 
         if let Some(mouse_position) = self.drag_mouse_position {
             if let DragState::Started { piece, .. } | DragState::Dragging { piece, .. } = self.drag_state {
@@ -86,7 +87,7 @@ impl Board {
         let y = mouse_position[1] - height / 2.0;
         let x_bounded = if x < 0. { 0.1 } else { x };
         let y_bounded = if y < 0. { 0.1 } else { y };
-        let scaled_up = Vec2::from((width * 1.05, height * 1.05));
+        let scaled_up = Vec2::from((width * 1.09, height * 1.09));
 
         draw_texture_ex(
             texture,
@@ -119,19 +120,22 @@ impl Board {
 
     fn last_move_highlights(&self) {
         if let Some(square_idx) = self.last_move_highlight {
-            let rank = square_idx / 8;
-            let file = square_idx % 8;
-            let square_coords = (
-                file as f32 * SQUARE_SIZE + X_OFFSET,
-                (7 - rank) as f32 * SQUARE_SIZE + Y_OFFSET,
-            );
-            draw_rectangle(
-                square_coords.0, 
-                square_coords.1, 
-                SQUARE_SIZE, 
-                SQUARE_SIZE, 
-                LAST_MOVE_HIGHLIGHT_COLOUR
-            );
+            if !self.legal_move_highlights.contains(&square_idx) {
+                let rank = square_idx / 8;
+                let file = square_idx % 8;
+                let square_coords = (
+                    file as f32 * SQUARE_SIZE + X_OFFSET,
+                    (7 - rank) as f32 * SQUARE_SIZE + Y_OFFSET,
+                );
+                draw_rectangle(
+                    square_coords.0, 
+                    square_coords.1, 
+                    SQUARE_SIZE, 
+                    SQUARE_SIZE, 
+                    LAST_MOVE_HIGHLIGHT_COLOUR
+                );
+            }
+            
         }
     }
 
@@ -377,7 +381,9 @@ impl PieceTextures {
     }
 
     fn get(&self, &piece: &Piece) -> &Texture2D {
-        self.map.get(&(piece)).unwrap()
+        self.map.get(&(piece)).expect(
+            "Unable to load piece texture for piece {piece}"
+        )
     }
 }
 

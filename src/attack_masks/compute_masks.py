@@ -1,3 +1,4 @@
+import random 
 
 def gen_moves(square, directions, repeats):
     origin_rank, origin_file = divmod(square, 8)
@@ -42,9 +43,6 @@ attacks_dict = {
     'white_pawn_attacks': create_attack_boards(white_pawn_directions),
     'black_pawn_attacks': create_attack_boards(black_pawn_directions),
     'knight_attacks': create_attack_boards(knight_directions),
-    'bishop_attacks': create_attack_boards(bishop_directions, 8),
-    'rook_attacks': create_attack_boards(rook_directions, 8),
-    'queen_attacks': create_attack_boards(king_directions, 8),
     'king_attacks': create_attack_boards(king_directions),
 
     'north_ray': create_attack_boards(north, 8),
@@ -89,9 +87,10 @@ def print_bitboard(bb, start_rank, start_file):
         print(" ".join(row))
     print()
 
-for (i, bb) in enumerate(attacks_dict['queen_attacks'][:16]):
+for (i, bb) in enumerate(attacks_dict['southeast_ray']):
     rank, file = divmod(i, 8)
     print(f'Attack mask for rank {rank + 1}, file {file + 1}:')
     print_bitboard(bb, rank, file)
+
 
 write_attack_masks('src/attack_masks/masks.rs', attacks_dict)
