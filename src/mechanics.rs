@@ -347,36 +347,37 @@ impl GameState {
     }
 
     fn slider_moves(&self, start: usize, piece: Piece, directions: &[usize]) -> Vec<Move> {
-        let mut moves: Vec<Move> = Vec::new();
-        let occupied = self.bitboards.occupied;
+            let mut moves: Vec<Move> = Vec::new();
+            let occupied = self.bitboards.occupied;
 
-        for &direction in directions {
-            let mut ray = ATTACK_MASKS[direction][start];
-            let blockers = ray & occupied;
+            for &direction in directions {
+                let ray = ATTACK_MASKS[direction][start];
+                let blockers = ray & occupied;
 
-            if blockers != 0 {
-                let blocker_square = Self::closest_blocker(direction, blockers);
+                if blockers != 0 {
+                    let blocker_square = Self::closest_blocker(direction, blockers);
+                    let mut ray_up_to_blocker = ray & Self::mask_up_to_exclusive(start, &direction, blocker_square);
 
-                ray &= Self::mask_up_to_exclusive(start, &direction, blocker_square);
+                    // append quiet moves
+                    while let Some(end) = pop_lsb(&mut ray_up_to_blocker) {
+                        moves.push(Move::quiet(start, end, piece.kind))
+                    };
 
-                // if blocker is capturable, capture it
-                if let Some(target_piece) = self.bitboards.piece_at_square(blocker_square) {
-                    if target_piece.colour != piece.colour {
-                        moves.push(Move::capture(start, blocker_square, piece.kind, target_piece.kind));
+                    // if blocker is capturable, capture it
+                    if let Some(target_piece) = self.bitboards.piece_at_square(blocker_square) {
+                        if target_piece.colour != piece.colour {
+                            moves.push(Move::capture(start, blocker_square, piece.kind, target_piece.kind));
+                        }
+                    }
+                } else {
+                    let mut ray_open = ray;
+                    while let Some(end) = pop_lsb(&mut ray_open) {
+                        moves.push(Move::quiet(start, end, piece.kind))
                     }
                 }
-                // otherwise, append quiet moves
-                while let Some(end) = pop_lsb(&mut ray) {
-                    moves.push(Move::quiet(start, end, piece.kind))
-                }
-            } else {
-                while let Some(end) = pop_lsb(&mut ray) {
-                    moves.push(Move::quiet(start, end, piece.kind))
-                }
             }
+            moves
         }
-        moves
-    }
 
     fn king_moves(&self, piece_colour: PieceColour) -> Vec<Move> {
         let mut moves: Vec<Move> = Vec::new();
@@ -448,7 +449,7 @@ impl GameState {
 
         loop {
             square += step;
-            if (0..64).contains(&square) | (square == blocker_square as isize) { break };
+            if !(0..64).contains(&square) || (square == blocker_square as isize) { break };
             mask |= 1u64 << square;
         }
         mask 

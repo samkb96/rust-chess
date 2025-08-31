@@ -18,6 +18,7 @@ const LEGAL_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(223, 130, 53, 130);
 const LAST_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(123, 170, 200, 100);
 
 pub const STARTING_POSITION_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+pub const TEST_POSITION_FEN: &str = "8/3P4/8/8/3q4/8/8/6kK";
 
 pub struct Board {
     drag_state: DragState,
