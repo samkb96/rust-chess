@@ -1,9 +1,9 @@
-use crate::mechanics::*;
 use crate::engine::*;
+use crate::mechanics::*;
 use macroquad::prelude::*;
 use std::collections::HashMap;
 
-const BOT_INPUT: bool = true;
+const BOT_INPUT: bool = false;
 
 pub const WINDOW_WIDTH: f32 = SQUARE_SIZE * 14.;
 pub const WINDOW_HEIGHT: f32 = SQUARE_SIZE * 9.5;
@@ -14,35 +14,46 @@ const Y_OFFSET: f32 = 120.;
 
 const DARK_COLOUR: Color = color_u8!(167, 128, 99, 255);
 const LIGHT_COLOUR: Color = color_u8!(238, 238, 210, 255);
-const LEGAL_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(223, 130, 53, 130);
-const LAST_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(123, 170, 200, 100);
+const LEGAL_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(223, 130, 53, 50);
+const LAST_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(161, 12, 14, 50);
 
-pub const STARTING_POSITION_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-pub const TEST_POSITION_FEN: &str = "8/3P4/8/8/3q4/8/8/6kK";
+const STARTING_POSITION_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"; // at some point, rework the from_fen function to get rank order/colour right
+#[allow(dead_code)]
+const PIN_TEST_FEN: &str = "K7/8/8/3R3B/8/3q1q2/8/3k4";
+
+pub const INITIALISATION_FEN: &str = STARTING_POSITION_FEN;
 
 pub struct Board {
     drag_state: DragState,
     drag_mouse_position: Option<Vec2>,
     legal_move_highlights: Vec<usize>,
-    last_move_highlight: Option<usize>
+    last_move_highlight: Option<usize>,
 }
 
 impl Board {
-
     pub fn initialise() -> Self {
         Board {
             drag_state: DragState::None,
             drag_mouse_position: None,
             legal_move_highlights: vec![],
-            last_move_highlight: None
+            last_move_highlight: None,
         }
     }
 
     pub fn draw_to_screen(&self, game_state: &GameState, texture: &PieceTextures, font: &Font) {
+        // draw board
         for square_idx in 0..64 {
             let coord = BoardCoordinate::from_usize(square_idx);
             BoardCoordinate::draw_board_square(&coord, font);
+        }
 
+        // draw highlights on top
+        self.legal_move_highlights();
+        self.last_move_highlights();
+
+        // draw pieces on top of highlights
+        for square_idx in 0..64 {
+            let coord = BoardCoordinate::from_usize(square_idx);
             if let Some(piece) = game_state.bitboards.piece_at_square(square_idx) {
                 let skip_drawing = self.drag_state.dragging_from_square(coord);
                 if !skip_drawing {
@@ -51,32 +62,28 @@ impl Board {
             }
         }
 
-        self.legal_move_highlights();
-        self.last_move_highlights();
-        
-
+        // dragged piece drawn on top of everything
         if let Some(mouse_position) = self.drag_mouse_position {
-            if let DragState::Started { piece, .. } | DragState::Dragging { piece, .. } = self.drag_state {
+            if let DragState::Started { piece, .. } | DragState::Dragging { piece, .. } =
+                self.drag_state
+            {
                 Self::draw_piece_at_mouse_position(&piece, mouse_position, texture)
             }
         }
     }
 
     pub fn update(&mut self, game_state: &mut GameState, mouse_position: Vec2) {
+        if is_key_pressed(KeyCode::Z) {
+            game_state.unmake_move()
+        }
+
         match self.drag_state {
-            DragState::None => {
-                self.dragstate_handler_none(game_state, mouse_position)
-            },
-            DragState::Started {piece, origin} => {
+            DragState::None => self.dragstate_handler_none(game_state, mouse_position),
+            DragState::Started { piece, origin } => {
                 self.dragstate_handler_started(mouse_position, piece, origin)
             }
-            DragState::Dragging {piece, origin} => {
-                self.dragstate_handler_dragging(
-                    game_state,
-                    mouse_position,
-                    piece,
-                    origin
-                )
+            DragState::Dragging { piece, origin } => {
+                self.dragstate_handler_dragging(game_state, mouse_position, piece, origin)
             }
         }
     }
@@ -101,7 +108,7 @@ impl Board {
             },
         );
     }
-    
+
     fn legal_move_highlights(&self) {
         for square_index in self.legal_move_highlights.iter() {
             let rank = square_index / 8;
@@ -111,11 +118,12 @@ impl Board {
                 (7 - rank) as f32 * SQUARE_SIZE + Y_OFFSET,
             );
             draw_rectangle(
-                square_coords.0, 
-                square_coords.1, 
-                SQUARE_SIZE, 
-                SQUARE_SIZE, 
-                LEGAL_MOVE_HIGHLIGHT_COLOUR);
+                square_coords.0,
+                square_coords.1,
+                SQUARE_SIZE,
+                SQUARE_SIZE,
+                LEGAL_MOVE_HIGHLIGHT_COLOUR,
+            );
         }
     }
 
@@ -129,14 +137,13 @@ impl Board {
                     (7 - rank) as f32 * SQUARE_SIZE + Y_OFFSET,
                 );
                 draw_rectangle(
-                    square_coords.0, 
-                    square_coords.1, 
-                    SQUARE_SIZE, 
-                    SQUARE_SIZE, 
-                    LAST_MOVE_HIGHLIGHT_COLOUR
+                    square_coords.0,
+                    square_coords.1,
+                    SQUARE_SIZE,
+                    SQUARE_SIZE,
+                    LAST_MOVE_HIGHLIGHT_COLOUR,
                 );
             }
-            
         }
     }
 
@@ -144,7 +151,10 @@ impl Board {
         if is_mouse_button_down(MouseButton::Left) {
             if let Some(coordinate) = BoardCoordinate::mouse_pos_to_coordinate(mouse_position) {
                 if let Some(piece) = game_state.bitboards.piece_at_square(coordinate.to_usize()) {
-                    self.drag_state = DragState::Started {piece, origin: coordinate};
+                    self.drag_state = DragState::Started {
+                        piece,
+                        origin: coordinate,
+                    };
                     self.drag_mouse_position = Some(mouse_position);
                 }
             }
@@ -176,19 +186,15 @@ impl Board {
         origin: BoardCoordinate,
     ) {
         self.drag_mouse_position = Some(mouse_position);
-        let relevant_legal_moves =
-                game_state.legal_moves_from(origin.to_usize());
-            self.legal_move_highlights = relevant_legal_moves
-                .iter()
-                .map(|m| m.end_square)
-                .collect();
+        let relevant_legal_moves = game_state.legal_moves_from(origin.to_usize());
+        self.legal_move_highlights = relevant_legal_moves.iter().map(|m| m.end_square).collect();
 
         if is_mouse_button_released(MouseButton::Left) {
             let target = BoardCoordinate::mouse_pos_to_coordinate(mouse_position).unwrap_or(origin);
 
             let candidate_move = self.candidate_move(game_state, origin, target, piece);
 
-            if relevant_legal_moves.contains(&candidate_move) {    
+            if relevant_legal_moves.contains(&candidate_move) {
                 game_state.make_move(candidate_move);
                 self.last_move_highlight = Some(candidate_move.end_square);
                 if BOT_INPUT {
@@ -199,17 +205,22 @@ impl Board {
             self.legal_move_highlights = Vec::new();
             self.drag_mouse_position = None;
             self.drag_state = DragState::None;
-            
         }
     }
 
-    fn candidate_move(&self, game_state: &GameState, origin: BoardCoordinate, target: BoardCoordinate, piece: Piece) -> Move {
+    fn candidate_move(
+        &self,
+        game_state: &GameState,
+        origin: BoardCoordinate,
+        target: BoardCoordinate,
+        piece: Piece,
+    ) -> Move {
         // need to implement promotion choice
         let target_square_occupant = game_state
             .bitboards
             .piece_at_square(target.to_usize())
             .map(|piece| piece.kind);
-        
+
         let candidate_move_type = Self::generate_move_type(origin, target, piece);
 
         Move {
@@ -222,14 +233,21 @@ impl Board {
         } // TODO promotion, en passant, castling done here but needs implementing elsewhere
     }
 
-    fn generate_move_type(origin: BoardCoordinate, target: BoardCoordinate, piece: Piece) -> MoveType {
+    fn generate_move_type(
+        origin: BoardCoordinate,
+        target: BoardCoordinate,
+        piece: Piece,
+    ) -> MoveType {
         let mut move_type = MoveType::Normal;
         if (piece.kind == PieceKind::King) & (origin.file.abs_diff(target.file) == 2) {
-            move_type = if origin.file > target.file {MoveType::CastleQueenside} else {MoveType::CastleKingside};
+            move_type = if origin.file > target.file {
+                MoveType::CastleQueenside
+            } else {
+                MoveType::CastleKingside
+            };
         }
         move_type
     }
-
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -247,9 +265,10 @@ enum DragState {
 impl DragState {
     fn dragging_from_square(&self, square_idx: BoardCoordinate) -> bool {
         match self {
-            DragState::Started { piece: _, origin } | DragState::Dragging { piece: _, origin } 
-            => origin == &square_idx,
-            _ => false
+            DragState::Started { piece: _, origin } | DragState::Dragging { piece: _, origin } => {
+                origin == &square_idx
+            }
+            _ => false,
         }
     }
 }
@@ -264,7 +283,7 @@ impl BoardCoordinate {
         (self.rank * 8 + self.file) as usize
     }
 
-    fn from_usize(square_index: usize) -> Self {
+    pub fn from_usize(square_index: usize) -> Self {
         BoardCoordinate {
             rank: (square_index / 8) as u8,
             file: (square_index % 8) as u8,
@@ -272,31 +291,31 @@ impl BoardCoordinate {
     }
 
     fn top_left_coordinate(&self) -> (f32, f32) {
-        (X_OFFSET + self.file as f32 * SQUARE_SIZE, Y_OFFSET + (7 - self.rank) as f32 * SQUARE_SIZE)
+        (
+            X_OFFSET + self.file as f32 * SQUARE_SIZE,
+            Y_OFFSET + (7 - self.rank) as f32 * SQUARE_SIZE,
+        )
     }
-    
+
     fn draw_board_square(&self, font: &Font) {
         let (square_colour, text_colour) = match (self.rank + self.file) % 2 {
             0 => (DARK_COLOUR, LIGHT_COLOUR),
             1 => (LIGHT_COLOUR, DARK_COLOUR),
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         let top_left = self.top_left_coordinate();
 
-        let text_coords = (
-            top_left.0 + 5.0,
-            top_left.1 + SQUARE_SIZE - 5.0
-        );
+        let text_coords = (top_left.0 + 5.0, top_left.1 + SQUARE_SIZE - 5.0);
 
         let square_name = self.square_name();
 
         draw_rectangle(
-            top_left.0, 
-            top_left.1, 
-            SQUARE_SIZE, 
-            SQUARE_SIZE, 
-            square_colour
+            top_left.0,
+            top_left.1,
+            SQUARE_SIZE,
+            SQUARE_SIZE,
+            square_colour,
         );
 
         draw_text_ex(
@@ -308,9 +327,8 @@ impl BoardCoordinate {
                 font_size: 14,
                 color: text_colour,
                 ..Default::default()
-            }
+            },
         );
-        
     }
 
     fn draw_piece_at_square(&self, piece: Piece, textures: &PieceTextures) {
@@ -331,7 +349,7 @@ impl BoardCoordinate {
         );
     }
 
-    fn square_name(&self) -> String {
+    pub fn square_name(&self) -> String {
         format!(
             "{}{}",
             file_from_int(self.file + 1).expect("Illegal file index"),
@@ -382,9 +400,9 @@ impl PieceTextures {
     }
 
     fn get(&self, &piece: &Piece) -> &Texture2D {
-        self.map.get(&(piece)).expect(
-            "Unable to load piece texture for piece {piece}"
-        )
+        self.map
+            .get(&(piece))
+            .expect("Unable to load piece texture for piece {piece}")
     }
 }
 

@@ -8,7 +8,7 @@ pub fn bot_move(game_state: &mut GameState) -> Option<Move> {
 
     if let Some(&move_choice) = legal_moves.iter().choose(&mut random_generator) {
         game_state.make_move(move_choice);
-        return Some(move_choice)
+        return Some(move_choice);
     }
     None
 }
