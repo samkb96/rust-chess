@@ -7,9 +7,10 @@ A hobby project for learning Rust.
 ## Overview
 
 Aims:
- - A game interface for single-player chess
- - A bot with a strength parameter to play against
- - Fancy move generation, search optimisation, neural evaluation 
+ - Game interface for one/two player chess
+ - Bots to choose from (easy, positional, tactical, hard)
+ - Fancy move generation + search optimisation 
+ - Mix of neural evaluation and classical techniques, dependent on personality parameters
 
 ---
 
@@ -18,15 +19,18 @@ Aims:
 ### Game interface
 - [x] Render board and pieces
 - [x] Drag and drop to move
-- [ ] Sound effects in Ableton
+- [ ] (On hold) Sound effects in Ableton
 
 ### Rules and Moves
 - [x] Bitboard interfacing
-- [ ] Encode rules, move generation
-- [ ] Possible positions after n moves counter to test rule implementation
+- [x] Pseudolegal move generation
 - [x] Move validation, legal move highlights
-- [ ] Implement game state (check, checkmate, stalemate)
-- [ ] Time control
+- [x] Pin logic
+- [ ] Checking logic
+- [ ] Edge cases (castling, en passant)
+- [ ] Final rule check: possible n-move position counts from selected test positions, compared with stockfish
+- [ ] Game endings (50 move draw, repetition draw, insufficient material draw, stalemate, checkmate)
+- [ ] Time controls
 
 ### Bot v1
 - [ ] Simple evaluation function: material evaluation, piece-square tables
