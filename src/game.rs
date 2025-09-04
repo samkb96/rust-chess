@@ -1,5 +1,7 @@
 use crate::engine::*;
+use crate::game_state::*;
 use crate::mechanics::*;
+use crate::constants::*;
 use macroquad::prelude::*;
 use std::collections::HashMap;
 
@@ -17,11 +19,6 @@ const LIGHT_COLOUR: Color = color_u8!(238, 238, 210, 255);
 const LEGAL_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(223, 130, 53, 50);
 const LAST_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(161, 12, 14, 50);
 
-const STARTING_POSITION_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"; // at some point, rework the from_fen function to get rank order/colour right
-#[allow(dead_code)]
-const PIN_TEST_FEN: &str = "K7/8/8/3R3B/8/3q1q2/8/3k4";
-
-pub const INITIALISATION_FEN: &str = STARTING_POSITION_FEN;
 
 pub struct Board {
     drag_state: DragState,

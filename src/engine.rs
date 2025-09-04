@@ -1,4 +1,4 @@
-use crate::mechanics::*;
+use crate::game_state::*;
 use rand::rng;
 use rand::seq::IteratorRandom;
 

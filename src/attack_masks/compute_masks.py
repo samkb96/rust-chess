@@ -57,7 +57,7 @@ attacks_dict = {
 
 def write_attack_masks(filename, attacks_dict):
     def format_array(const_name, array):
-        lines = [f'pub const {const_name.upper()}: [u64; 64] = [']
+        lines = [f'pub const {const_name.upper()}: [BitBoard; 64] = [']
         for i in range(0, 64, 8):
             newboard = ', '.join(str(bitboard) for bitboard in array[i: i + 8])
             lines.append(f'  {newboard},')
@@ -66,6 +66,7 @@ def write_attack_masks(filename, attacks_dict):
     
     with open(filename, 'w') as f:
         f.write('// attack masks\n\n')
+        f.write('use crate::bitboards::*;\n\n')
         for k, v in attacks_dict.items():
             f.write(format_array(k, v))
 

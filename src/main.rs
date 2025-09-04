@@ -3,10 +3,12 @@
 mod attack_masks;
 mod engine;
 mod game;
+mod game_state;
 mod mechanics;
+mod constants;
 use game::*;
 use macroquad::prelude::*;
-use mechanics::*;
+use game_state::*;
 
 #[macroquad::main(window_conf)]
 async fn main() {
@@ -29,7 +31,6 @@ async fn main() {
         board.draw_to_screen(&game_state, &textures, &aptos);
         board.update(&mut game_state, mouse_position().into());
         game_state.bitboards.draw_attack_masks_to_screen(&aptos);
-        game_state.draw_pins_and_checks(&aptos);
         draw_framerate(&aptos);
         next_frame().await
     }
