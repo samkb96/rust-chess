@@ -184,14 +184,16 @@ impl Board {
     ) {
         self.drag_mouse_position = Some(mouse_position);
         let relevant_legal_moves = game_state.legal_moves_from(origin.to_usize());
+
         self.legal_move_highlights = relevant_legal_moves.iter().map(|m| m.end_square).collect();
 
         if is_mouse_button_released(MouseButton::Left) {
             let target = BoardCoordinate::mouse_pos_to_coordinate(mouse_position).unwrap_or(origin);
 
-            let candidate_move = self.candidate_move(game_state, origin, target, piece);
+            let candidate_move = self.candidate_move(game_state, origin, target, piece, None); // TODO promotion choice input
 
             if relevant_legal_moves.contains(&candidate_move) {
+
                 game_state.make_move(candidate_move);
                 self.last_move_highlight = Some(candidate_move.end_square);
                 if BOT_INPUT {
@@ -211,39 +213,79 @@ impl Board {
         origin: BoardCoordinate,
         target: BoardCoordinate,
         piece: Piece,
+        promotion: Option<PieceKind> 
     ) -> Move {
+        let (start, end) = (origin.to_usize(), target.to_usize());
         // need to implement promotion choice
         let target_square_occupant = game_state
             .bitboards
-            .piece_at_square(target.to_usize())
+            .piece_at_square(end)
             .map(|piece| piece.kind);
 
-        let candidate_move_type = Self::generate_move_type(origin, target, piece);
+        let candidate_move_type = Self::generate_move_type(origin, target, piece, target_square_occupant);
 
-        Move {
-            start_square: origin.to_usize(),
-            end_square: target.to_usize(),
-            piece_moved: piece.kind,
-            captured: target_square_occupant,
-            promotion: None,
-            move_type: candidate_move_type,
-        } // TODO promotion, en passant, castling done here but needs implementing elsewhere
+
+        if let Some(promotion_choice) = promotion {
+            return Move::promotion(start, end, promotion_choice, target_square_occupant)
+        }
+        match candidate_move_type {
+            MoveType::Normal => {
+                if let Some(captured) = target_square_occupant {
+                    Move::capture(start, end, piece.kind, captured)
+                } else {
+                    Move::quiet(start, end, piece.kind)
+                }
+            },
+            MoveType::EnPassant => Move::en_passant(start, end),
+            MoveType::CastleKingside => Move::castling(end, MoveType::CastleKingside),
+            MoveType::CastleQueenside => Move::castling(end, MoveType::CastleQueenside),
+        }
     }
 
     fn generate_move_type(
         origin: BoardCoordinate,
         target: BoardCoordinate,
         piece: Piece,
+        captured: Option<PieceKind>
     ) -> MoveType {
-        let mut move_type = MoveType::Normal;
-        if (piece.kind == PieceKind::King) & (origin.file.abs_diff(target.file) == 2) {
-            move_type = if origin.file > target.file {
-                MoveType::CastleQueenside
-            } else {
-                MoveType::CastleKingside
-            };
+        let piece_kind = piece.kind as usize;
+
+        if (1..=4).contains(&piece_kind) {
+            return MoveType::Normal // only pawns and kings get special moves
         }
-        move_type
+
+        match piece_kind {
+            0 => {
+
+                // needs to be diagonal for en passant
+                let is_diagonal_move = [7, 9].contains(&origin.to_usize().abs_diff(target.to_usize()));
+                if !is_diagonal_move {
+                    return MoveType::Normal
+                }
+
+                // landing square has to be empty for en passant
+                let is_empty_target = captured.is_none();
+                if !is_empty_target {
+                    return MoveType::Normal
+                }
+
+                MoveType::EnPassant
+            },
+            5 => {
+
+                // two square movement indicates castling
+                let moved_two_squares = origin.file.abs_diff(target.file) == 2;
+
+                if !moved_two_squares {
+                    return MoveType::Normal
+                }
+                // direction gives side
+                let moved_rightward = origin.file < target.file;
+                if moved_rightward {MoveType::CastleKingside} else {MoveType::CastleQueenside}
+                
+            },
+            _ => unreachable!("handled this already")
+        }
     }
 }
 

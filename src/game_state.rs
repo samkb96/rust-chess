@@ -5,7 +5,7 @@ use crate::mechanics::*;
 use crate::constants::*;
 use arrayvec::ArrayVec;
 use macroquad::prelude::*;
-
+use std::io::*;
 #[derive(Clone)]
 pub struct GameState {
     pub bitboards: BitBoards,
@@ -15,11 +15,11 @@ pub struct GameState {
     en_passant_square: Option<BitBoard>,
     halfmove_clock: u16,
     fullmove_number: u16,
-    previous_state: StateCache,
+    pub previous_state: StateCache,
 }
 
 #[derive(Clone, PartialEq, Eq)]
-struct PreviousState {
+pub struct PreviousState {
     last_move: Move,
     castling_rights: CastlingRights,
     en_passant_square: Option<BitBoard>,
@@ -29,7 +29,8 @@ struct PreviousState {
 type StateCache = Vec<PreviousState>;
 // core methods
 impl GameState {
-    fn from_fen(fen: &str) -> GameState {
+
+    pub fn from_fen(fen: &str) -> GameState {
         let mut bitboards = BitBoards::default();
         let mut square_index = 56;
 
@@ -69,6 +70,7 @@ impl GameState {
             "b" => PieceColour::Black,
             _ => panic!("Fen string side to move invalid")
         };
+        
 
         // pins and checks
         let pins_and_checkers = bitboards.get_pins_and_checks(side_to_move);
@@ -112,69 +114,6 @@ impl GameState {
         Self::from_fen(INITIALISATION_FEN)
     }
 
-    pub fn unmake_move(&mut self) {
-
-        let Some(previous_state) = self.previous_state.pop() else {
-            return; // don't undo if nothing to undo
-        };
-        let side_to_move = self.side_to_move as usize;
-        let side_just_moved = 1 - side_to_move;
-        let last_move = previous_state.last_move;
-
-        // bitboard stuff
-        // add pieces back to original places on bitboards
-        let start_bb = 1u64 << last_move.start_square;
-        let end_bb = 1u64 << last_move.end_square;
-        let piece = last_move.piece_moved;
-
-        // remove piece from end square (promoted piece if promotion)
-        match last_move.promotion {
-            Some(promotion) => self.bitboards.pieces[side_just_moved][promotion as usize] ^= end_bb,
-            None => self.bitboards.pieces[side_just_moved][piece as usize] ^= end_bb,
-        }
-
-        // reappend captured piece to end square, if any
-        if last_move.move_type != MoveType::EnPassant {
-            // if not en passant, captured piece goes on end square of the capturing move
-            if let Some(captured) = last_move.captured {
-                self.bitboards.pieces[side_to_move][captured as usize] ^= end_bb;
-            }
-        } else {
-            // place en passant captured pawn on previous gamestate's en_passant_square
-            self.bitboards.pieces[side_to_move][0] ^=
-                previous_state.en_passant_square.unwrap();
-        }
-
-        self.bitboards.pieces[side_just_moved][piece as usize] ^= start_bb; // add piece to start square
-
-        if [MoveType::CastleKingside, MoveType::CastleQueenside].contains(&last_move.move_type) {
-            let (rook_before_castling, rook_after_castling) =
-                match (side_just_moved, last_move.move_type) {
-                    (0, MoveType::CastleKingside) => (7, 5),
-                    (1, MoveType::CastleKingside) => (63, 61),
-                    (0, MoveType::CastleQueenside) => (0, 3),
-                    (1, MoveType::CastleQueenside) => (56, 59),
-                    _ => unreachable!("Non-castling undo move snuck into castling logic"),
-                };
-            // remove rook from square
-            self.bitboards.pieces[side_just_moved][3] ^= 1u64 << rook_after_castling;
-            // reappend to corner square
-            self.bitboards.pieces[side_just_moved][3] ^= 1u64 << rook_before_castling;
-        }
-
-        // other calculated gamestate fields
-        self.side_to_move = PieceColour::try_from(side_just_moved).unwrap();
-        self.bitboards.recompute_aggregates();
-        self.pins_and_checkers = self.bitboards.get_pins_and_checks(self.side_to_move);
-        self.fullmove_number -= 1;
-
-        // reset cached state
-        self.castling_rights = previous_state.castling_rights;
-        self.halfmove_clock = previous_state.halfmove_clock;
-        self.en_passant_square = previous_state.en_passant_square;
-
-        // self.previous_state already had most recent move etc removed from vector by .pop() called previously
-    }
 
     pub fn make_move(&mut self, move_to_make: Move) {
         // first cache state
@@ -196,7 +135,7 @@ impl GameState {
         // remove piece at start
         self.bitboards.pieces[colour_moved as usize][piece_moved as usize] ^= start_bitboard;
 
-        if let Some(captured) = move_to_make.captured {
+        if let Some(captured) = move_to_make.captured && move_type == MoveType::Normal {
             // remove captured piece
             self.bitboards.pieces[1 - (colour_moved as usize)][captured as usize] ^= end_bitboard;
         }
@@ -237,15 +176,80 @@ impl GameState {
             // remove captured pawn from opposition bitboard
             self.bitboards.pieces[1 - (colour_moved as usize)][0] ^= captured_pawn_square;
         }
+
         self.bitboards.recompute_aggregates();
-        self.update_internal_state_params(&move_to_make)
+        self.update_internal_state_params(&move_to_make);
+
     }
 
-    pub fn legal_moves_from(&self, start: usize) -> Moves {
-        self.legal_moves()
-            .into_iter()
-            .filter(|m| m.start_square == start)
-            .collect()
+    pub fn unmake_move(&mut self) {
+
+        let Some(previous_state) = self.previous_state.pop() else {
+            return; // don't undo if nothing to undo
+        };
+        let side_to_move = self.side_to_move as usize;
+        let side_just_moved = 1 - side_to_move;
+        let last_move = previous_state.last_move;
+
+        // bitboard stuff
+        // add pieces back to original places on bitboards
+        let start_bb = 1u64 << last_move.start_square;
+        let end_bb = 1u64 << last_move.end_square;
+        let piece = last_move.piece_moved;
+
+        // remove piece from end square (promoted piece if promotion)
+        match last_move.promotion {
+            Some(promotion) => self.bitboards.pieces[side_just_moved][promotion as usize] ^= end_bb,
+            None => self.bitboards.pieces[side_just_moved][piece as usize] ^= end_bb,
+        }
+
+        // reappend captured piece to end square, if any
+        if last_move.move_type != MoveType::EnPassant {
+            // if not en passant, captured piece goes on end square of the capturing move
+            if let Some(captured) = last_move.captured {
+                self.bitboards.pieces[side_to_move][captured as usize] ^= end_bb;
+            }
+        } else {
+            // place en passant captured pawn on previous gamestate's en_passant_square
+            let prev_ep_square = previous_state.en_passant_square.unwrap();
+            let original_square = match prev_ep_square > 1u64 << 32 {
+                false => prev_ep_square << 8, // rank above ep square if white's side of the board
+                true => prev_ep_square >> 8, // rank below ep square if black's side of board
+            };
+            self.bitboards.pieces[side_to_move][0] ^= original_square;
+        }
+
+        self.bitboards.pieces[side_just_moved][piece as usize] ^= start_bb; // add piece to start square
+
+        if [MoveType::CastleKingside, MoveType::CastleQueenside].contains(&last_move.move_type) {
+            let (rook_before_castling, rook_after_castling) =
+                match (side_just_moved, last_move.move_type) {
+                    (0, MoveType::CastleKingside) => (7, 5),
+                    (1, MoveType::CastleKingside) => (63, 61),
+                    (0, MoveType::CastleQueenside) => (0, 3),
+                    (1, MoveType::CastleQueenside) => (56, 59),
+                    _ => unreachable!("Non-castling undo move snuck into castling logic"),
+                };
+            // remove rook from square
+            self.bitboards.pieces[side_just_moved][3] ^= 1u64 << rook_after_castling;
+            // reappend to corner square
+            self.bitboards.pieces[side_just_moved][3] ^= 1u64 << rook_before_castling;
+        }
+
+        // other calculated gamestate fields
+        self.side_to_move = PieceColour::try_from(side_just_moved).unwrap();
+        self.bitboards.recompute_aggregates();
+        self.pins_and_checkers = self.bitboards.get_pins_and_checks(self.side_to_move);
+
+        self.fullmove_number -= side_just_moved as u16; // only reduce if black just moved
+
+        // reset cached state
+        self.castling_rights = previous_state.castling_rights;
+        self.halfmove_clock = previous_state.halfmove_clock;
+        self.en_passant_square = previous_state.en_passant_square;
+
+        // self.previous_state already had most recent move etc removed from vector by .pop() called previously
+
     }
 
     fn update_internal_state_params(&mut self, move_made: &Move) {
@@ -309,12 +313,16 @@ impl GameState {
 
         // en passant square
         if move_made.piece_moved == PieceKind::Pawn {
-            let (start, end) = (move_made.start_square as i16, move_made.end_square as i16);
+            let (start, end) = (move_made.start_square, move_made.end_square);
             // should only be true if pawn has moved two squares
-            if (end - start) % 16 == 0 {
+            if end.abs_diff(start) == 16 {
                 // set en_passant_square to be the midpoint of the start and end moves
-                self.en_passant_square = Some(1u64 << (start + (end - start) / 2))
+                self.en_passant_square = Some(1u64 << ((start + end) / 2))
+            } else {
+                self.en_passant_square = None
             }
+        } else {
+            self.en_passant_square = None
         }
 
         // pass turn over & update fullmove_number if black has just moved
@@ -332,8 +340,34 @@ impl GameState {
         self.pins_and_checkers = self.bitboards.get_pins_and_checks(self.side_to_move);
     }
 
+    pub fn naive_hash(&self) -> u128 {
+        let mut h = 0u128;
+        for colour in 0..2 {
+            for piece in 0..6 {
+                h ^= (self.bitboards.pieces[colour][piece] as u128) << (piece * colour);
+            }
+        }
+        h ^= (self.castling_rights.to_u8() as u128) << 64;
+        h ^= self.en_passant_square.unwrap_or(0) as u128;
+        h ^= (self.side_to_move as u128) << 37;
+        h
+    }
+
 }
-// TODO checking logic (blocking, capturing, double check -> king move, not moving into check)
+    fn format_movestring(mv: Move) -> String {
+        let start_str = BoardCoordinate::from_usize(mv.start_square).square_name();
+        let end_str = BoardCoordinate::from_usize(mv.end_square).square_name();
+        let pieces = ["Pawn", "Knight", "Bishop", "Rook", "Queen", "King"];
+        let piece_str = pieces[mv.piece_moved as usize];
+        let captured_str = if let Some(captured_piece) = mv.captured {
+            pieces[captured_piece as usize]
+        } else {
+            "None"
+        };
+        format!("Move: {start_str}{end_str}. Piece moved: {piece_str}. Captured: {captured_str}")
+    }
+
+
 // TODO castling logic (no castling through check, castling rights)
 // TODO that one stupid en passant edge case that's not covered by pin logic
 // piece move generators 
@@ -347,6 +381,13 @@ impl GameState {
         moves.extend(self.queen_moves(self.side_to_move));
         moves.extend(self.king_moves(self.side_to_move));
         moves
+    }
+    
+    pub fn legal_moves_from(&self, start: usize) -> Moves {
+        self.legal_moves()
+            .into_iter()
+            .filter(|m| m.start_square == start)
+            .collect()
     }
 
     fn pawn_moves(&self, piece_colour: PieceColour) -> Moves {
@@ -376,14 +417,13 @@ impl GameState {
                 continue;
             }
             let end_square_illegal = (pin_and_check_mask & (1u64 << end)) == 0;
-
             // in order to move one or two squares, first square must be empty, and pin direction must be vertical
             if is_empty(self.bitboards.occupied, end) {
                 if !end_square_illegal {
                     if is_promotion_rank(piece_colour, end) {
                         moves.extend(Move::promotions(start, end, None))
                     } else {
-                        moves.push(Move::quiet(start, end, PieceKind::Pawn))
+                        moves.push(Move::quiet(start, end, PieceKind::Pawn));
                     }
                 }
 
@@ -410,7 +450,7 @@ impl GameState {
                         if is_promotion_rank(piece_colour, start) {
                             moves.extend(Move::promotions(start, end, Some(captured_piece)))
                         } else {
-                            moves.push(Move::capture(start, end, PieceKind::Pawn, captured_piece))
+                            moves.push(Move::capture(start, end, PieceKind::Pawn, captured_piece));
                         }
                     }
                 }
@@ -418,7 +458,7 @@ impl GameState {
                 // en passant
                 if let Some(en_passant_square) = self.en_passant_square {
                     if ((1u64 << end & en_passant_square) != 0) && !end_square_illegal {
-                        moves.push(Move::en_passant(start, end))
+                        moves.push(Move::en_passant(start, end));
                     }
                 }
             }
@@ -569,15 +609,9 @@ impl GameState {
             if moving_into_check {
                 continue
             }
+            
             if is_empty(self.bitboards.occupied, end) {
-                moves.push(Move {
-                    start_square: start,
-                    end_square: end,
-                    piece_moved: PieceKind::King,
-                    captured: None,
-                    promotion: None,
-                    move_type: MoveType::Normal,
-                })
+                moves.push(Move::quiet(start, end, PieceKind::King));
             };
 
             let enemies = self
@@ -599,10 +633,11 @@ impl GameState {
             let castling_rights_valid = self.castling_rights.check(piece_colour, *castling_side);
 
             let obstruction_squares = CASTLING_SQUARES.0[piece_colour as usize][*side_id];
-            let prevented_by_obstruction = obstruction_squares & self.bitboards.occupied == 0;
+            let prevented_by_obstruction = (obstruction_squares & self.bitboards.occupied) != 0;
 
             let vulnerable_squares = CASTLING_SQUARES.1[piece_colour as usize][*side_id];
-            let prevented_by_attack = vulnerable_squares & enemy_attacks == 0;
+            let prevented_by_attack = (vulnerable_squares & enemy_attacks) != 0;
+
 
             if castling_rights_valid && !prevented_by_obstruction && !prevented_by_attack {
                 let king_target= match (piece_colour, castling_side) {
@@ -658,9 +693,9 @@ pub struct Move {
     pub promotion: Option<PieceKind>,
     pub move_type: MoveType,
 }
-type Moves = ArrayVec<Move, 218>;
+pub type Moves = ArrayVec<Move, 218>;
 impl Move {
-    fn quiet(start: usize, end: usize, piece_kind: PieceKind) -> Move {
+    pub fn quiet(start: usize, end: usize, piece_kind: PieceKind) -> Move {
         Move {
             start_square: start,
             end_square: end,
@@ -671,7 +706,7 @@ impl Move {
         }
     }
 
-    fn capture(start: usize, end: usize, piece_kind: PieceKind, target_kind: PieceKind) -> Move {
+    pub fn capture(start: usize, end: usize, piece_kind: PieceKind, target_kind: PieceKind) -> Move {
         Move {
             start_square: start,
             end_square: end,
@@ -681,8 +716,18 @@ impl Move {
             move_type: MoveType::Normal,
         }
     }
-
-    fn promotions(start: usize, end: usize, target_kind: Option<PieceKind>) -> Moves {
+    
+    pub fn promotion(start: usize, end: usize, promotion_choice: PieceKind, target_kind: Option<PieceKind>) -> Move {
+        Move {
+            start_square: start,
+            end_square: end, 
+            piece_moved: PieceKind::Pawn,
+            captured: target_kind,
+            promotion: Some(promotion_choice),
+            move_type: MoveType::Normal
+        }
+    }
+    pub fn promotions(start: usize, end: usize, target_kind: Option<PieceKind>) -> Moves {
         let promotions = [
             PieceKind::Knight,
             PieceKind::Bishop,
@@ -691,18 +736,11 @@ impl Move {
         ];
         promotions
             .into_iter()
-            .map(|promotion| Move {
-                start_square: start,
-                end_square: end,
-                piece_moved: PieceKind::Pawn,
-                captured: target_kind,
-                promotion: Some(promotion),
-                move_type: MoveType::Normal,
-            })
+            .map(|promotion_choice| Move::promotion(start, end, promotion_choice, target_kind))
             .collect()
     }
 
-    fn en_passant(start: usize, end: usize) -> Move {
+    pub fn en_passant(start: usize, end: usize) -> Move {
         Move {
             start_square: start,
             end_square: end,
@@ -713,7 +751,7 @@ impl Move {
         }
     }
 
-    fn castling(end: usize, castling_side: MoveType) -> Move {
+    pub fn castling(end: usize, castling_side: MoveType) -> Move {
         let start = match end {
             2|6 => 4,
             58|62 => 60,
@@ -739,3 +777,89 @@ pub enum MoveType {
     EnPassant,
 }
 
+fn debug_move(game_state: &mut GameState, m: Move) {
+    use std::fmt::Write;
+
+    fn bitboard_str(bb: u64) -> String {
+        let mut s = String::with_capacity(64);
+        for rank in (0..8).rev() {
+            for file in 0..8 {
+                let sq = rank * 8 + file;
+                s.push(if (bb >> sq) & 1 != 0 { 'X' } else { '.' });
+            }
+            s.push('\n');
+        }
+        s
+    }
+
+    let side_to_move = game_state.side_to_move as usize;
+    let side_just_moved = 1 - side_to_move;
+
+    // Snapshot before move
+    println!("=== BEFORE MOVE ===");
+    println!("Move: {:?}", m);
+    for piece in 0..6 {
+        let bb = game_state.bitboards.pieces[side_just_moved][piece];
+        if bb != 0 {
+            println!(
+                "Moving side piece {:?}:\n{}",
+                ["Pawn","Knight","Bishop","Rook","Queen","King"][piece],
+                bitboard_str(bb)
+            );
+        }
+    }
+    if let Some(captured) = m.captured {
+        let bb = game_state.bitboards.pieces[side_to_move][captured as usize];
+        println!(
+            "Captured piece {:?}:\n{}",
+            ["Pawn","Knight","Bishop","Rook","Queen","King"][captured as usize],
+            bitboard_str(bb)
+        );
+    }
+
+    // Apply move
+    game_state.make_move(m);
+
+    println!("=== AFTER MAKE ===");
+    for piece in 0..6 {
+        let bb = game_state.bitboards.pieces[side_just_moved][piece];
+        if bb != 0 {
+            println!(
+                "Moving side piece {:?}:\n{}",
+                ["Pawn","Knight","Bishop","Rook","Queen","King"][piece],
+                bitboard_str(bb)
+            );
+        }
+    }
+    if let Some(captured) = m.captured {
+        let bb = game_state.bitboards.pieces[side_to_move][captured as usize];
+        println!(
+            "Captured piece {:?}:\n{}",
+            ["Pawn","Knight","Bishop","Rook","Queen","King"][captured as usize],
+            bitboard_str(bb)
+        );
+    }
+
+    // Undo move
+    game_state.unmake_move();
+
+    println!("=== AFTER UNMAKE ===");
+    for piece in 0..6 {
+        let bb = game_state.bitboards.pieces[side_just_moved][piece];
+        if bb != 0 {
+            println!(
+                "Moving side piece {:?}:\n{}",
+                ["Pawn","Knight","Bishop","Rook","Queen","King"][piece],
+                bitboard_str(bb)
+            );
+        }
+    }
+    if let Some(captured) = m.captured {
+        let bb = game_state.bitboards.pieces[side_to_move][captured as usize];
+        println!(
+            "Captured piece {:?}:\n{}",
+            ["Pawn","Knight","Bishop","Rook","Queen","King"][captured as usize],
+            bitboard_str(bb)
+        );
+    }
+}

@@ -45,6 +45,14 @@ pub struct CastlingRights {
     pub black_kingside: bool,
     pub black_queenside: bool,
 }
+impl CastlingRights {
+    pub fn to_u8(&self) -> u8 {
+        (self.white_kingside as u8) << 0 |
+        (self.white_queenside as u8) << 1 |
+        (self.black_kingside as u8) << 2 |
+        (self.black_queenside as u8) << 3
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct PinsAndCheckers {
@@ -188,6 +196,7 @@ impl BitBoards {
 
     fn king_attacks(&self, piece_colour: PieceColour) -> BitBoard {
         let king_bb = self.pieces[piece_colour as usize][5];
+
         assert!(
             king_bb.count_ones() == 1,
             "King bitboard misfire for {piece_colour:?}"
@@ -197,15 +206,16 @@ impl BitBoards {
         KING_ATTACKS[king_position]
     }
 
-    fn directional_attacks(&self, slider_locations: BitBoard, direction: usize) -> BitBoard {
+    fn directional_attacks(&self, slider_locations: BitBoard, slider_colour: usize, direction: usize) -> BitBoard {
         let mut current_slider_attack_masks = 0u64;
         let mut sliders = slider_locations;
         let occupied = self.occupied;
+        let attacked_colour = 1 - slider_colour;
 
         while let Some(start) = pop_lsb(&mut sliders) {
             let ray = ATTACK_MASKS[direction][start];
-            let blockers = ray & occupied;
-
+            let blockers = (ray & occupied) & !self.pieces[attacked_colour][5];
+            // king doesn't count as a blocker
             if blockers != 0 {
                 // squares up to and including blocker are 'attacked', regardless of blocker colour (ie defended,  if blocker is same colour)
                 let blocker_square = closest_blocker(direction, blockers);
@@ -232,7 +242,7 @@ impl BitBoards {
         };
 
         for &direction in directions {
-            current_slider_attack_masks |= self.directional_attacks(sliders, direction);
+            current_slider_attack_masks |= self.directional_attacks(sliders, piece_colour as usize, direction);
         }
         current_slider_attack_masks
     }
