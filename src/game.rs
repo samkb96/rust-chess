@@ -16,8 +16,8 @@ const Y_OFFSET: f32 = 120.;
 
 const DARK_COLOUR: Color = color_u8!(167, 128, 99, 255);
 const LIGHT_COLOUR: Color = color_u8!(238, 238, 210, 255);
-const LEGAL_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(223, 130, 53, 50);
-const LAST_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(161, 12, 14, 50);
+const LEGAL_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(223, 130, 53, 100);
+const LAST_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(161, 12, 14, 100);
 
 
 pub struct Board {

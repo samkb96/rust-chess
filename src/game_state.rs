@@ -71,9 +71,9 @@ impl GameState {
             _ => panic!("Fen string side to move invalid")
         };
         
-
         // pins and checks
         let pins_and_checkers = bitboards.get_pins_and_checks(side_to_move);
+
 
         // castling rights
         let castling_rights = CastlingRights {
@@ -116,6 +116,7 @@ impl GameState {
 
 
     pub fn make_move(&mut self, move_to_make: Move) {
+
         // first cache state
         self.previous_state.push(PreviousState {
             last_move: move_to_make,
@@ -354,18 +355,19 @@ impl GameState {
     }
 
 }
-    fn format_movestring(mv: Move) -> String {
-        let start_str = BoardCoordinate::from_usize(mv.start_square).square_name();
-        let end_str = BoardCoordinate::from_usize(mv.end_square).square_name();
-        let pieces = ["Pawn", "Knight", "Bishop", "Rook", "Queen", "King"];
-        let piece_str = pieces[mv.piece_moved as usize];
-        let captured_str = if let Some(captured_piece) = mv.captured {
-            pieces[captured_piece as usize]
-        } else {
-            "None"
-        };
-        format!("Move: {start_str}{end_str}. Piece moved: {piece_str}. Captured: {captured_str}")
-    }
+
+fn format_movestring(mv: Move) -> String {
+    let start_str = BoardCoordinate::from_usize(mv.start_square).square_name();
+    let end_str = BoardCoordinate::from_usize(mv.end_square).square_name();
+    let pieces = ["Pawn", "Knight", "Bishop", "Rook", "Queen", "King"];
+    let piece_str = pieces[mv.piece_moved as usize];
+    let captured_str = if let Some(captured_piece) = mv.captured {
+        pieces[captured_piece as usize]
+    } else {
+        "None"
+    };
+    format!("Move: {start_str}{end_str}. Piece moved: {piece_str}. Captured: {captured_str}")
+}
 
 
 // TODO castling logic (no castling through check, castling rights)
@@ -413,6 +415,7 @@ impl GameState {
             };
 
             let end = (start as i8 + one_step) as usize;
+            
             if !(0..64).contains(&end) {
                 continue;
             }
@@ -472,18 +475,21 @@ impl GameState {
         let pin_array = self.pins_and_checkers.pins;
         let check_mask = self.pins_and_checkers.check_mask;
 
-        'loop_over_knights: while let Some(start) = pop_lsb(&mut knights) {
+        'knights: while let Some(start) = pop_lsb(&mut knights) {
             // if pinned, move to next knight - no legal moves within the pin direction
             if pin_array[start] != !0 {
-                continue 'loop_over_knights
+                continue 'knights
             }
 
             // get attack board for square
             let mut knight_mask = KNIGHT_ATTACKS[start];
             // loop over possible target squares
-            while let Some(end) = pop_lsb(&mut knight_mask) {
+            'targets: while let Some(end) = pop_lsb(&mut knight_mask) {
                 let end_square_illegal = (1u64 << end & check_mask) == 0;
-                if is_empty(self.bitboards.occupied, end) && !end_square_illegal {
+
+                if end_square_illegal {continue 'targets}
+
+                if is_empty(self.bitboards.occupied, end) {
                     moves.push(Move::quiet(start, end, PieceKind::Knight));
                 }
                 // captures
@@ -775,91 +781,4 @@ pub enum MoveType {
     CastleKingside,
     CastleQueenside,
     EnPassant,
-}
-
-fn debug_move(game_state: &mut GameState, m: Move) {
-    use std::fmt::Write;
-
-    fn bitboard_str(bb: u64) -> String {
-        let mut s = String::with_capacity(64);
-        for rank in (0..8).rev() {
-            for file in 0..8 {
-                let sq = rank * 8 + file;
-                s.push(if (bb >> sq) & 1 != 0 { 'X' } else { '.' });
-            }
-            s.push('\n');
-        }
-        s
-    }
-
-    let side_to_move = game_state.side_to_move as usize;
-    let side_just_moved = 1 - side_to_move;
-
-    // Snapshot before move
-    println!("=== BEFORE MOVE ===");
-    println!("Move: {:?}", m);
-    for piece in 0..6 {
-        let bb = game_state.bitboards.pieces[side_just_moved][piece];
-        if bb != 0 {
-            println!(
-                "Moving side piece {:?}:\n{}",
-                ["Pawn","Knight","Bishop","Rook","Queen","King"][piece],
-                bitboard_str(bb)
-            );
-        }
-    }
-    if let Some(captured) = m.captured {
-        let bb = game_state.bitboards.pieces[side_to_move][captured as usize];
-        println!(
-            "Captured piece {:?}:\n{}",
-            ["Pawn","Knight","Bishop","Rook","Queen","King"][captured as usize],
-            bitboard_str(bb)
-        );
-    }
-
-    // Apply move
-    game_state.make_move(m);
-
-    println!("=== AFTER MAKE ===");
-    for piece in 0..6 {
-        let bb = game_state.bitboards.pieces[side_just_moved][piece];
-        if bb != 0 {
-            println!(
-                "Moving side piece {:?}:\n{}",
-                ["Pawn","Knight","Bishop","Rook","Queen","King"][piece],
-                bitboard_str(bb)
-            );
-        }
-    }
-    if let Some(captured) = m.captured {
-        let bb = game_state.bitboards.pieces[side_to_move][captured as usize];
-        println!(
-            "Captured piece {:?}:\n{}",
-            ["Pawn","Knight","Bishop","Rook","Queen","King"][captured as usize],
-            bitboard_str(bb)
-        );
-    }
-
-    // Undo move
-    game_state.unmake_move();
-
-    println!("=== AFTER UNMAKE ===");
-    for piece in 0..6 {
-        let bb = game_state.bitboards.pieces[side_just_moved][piece];
-        if bb != 0 {
-            println!(
-                "Moving side piece {:?}:\n{}",
-                ["Pawn","Knight","Bishop","Rook","Queen","King"][piece],
-                bitboard_str(bb)
-            );
-        }
-    }
-    if let Some(captured) = m.captured {
-        let bb = game_state.bitboards.pieces[side_to_move][captured as usize];
-        println!(
-            "Captured piece {:?}:\n{}",
-            ["Pawn","Knight","Bishop","Rook","Queen","King"][captured as usize],
-            bitboard_str(bb)
-        );
-    }
 }

@@ -46,8 +46,8 @@ pub struct CastlingRights {
     pub black_queenside: bool,
 }
 impl CastlingRights {
-    pub fn to_u8(&self) -> u8 {
-        (self.white_kingside as u8) << 0 |
+    pub fn to_u8(self) -> u8 {
+        (self.white_kingside as u8) |
         (self.white_queenside as u8) << 1 |
         (self.black_kingside as u8) << 2 |
         (self.black_queenside as u8) << 3
@@ -56,8 +56,10 @@ impl CastlingRights {
 
 #[derive(Clone, Debug)]
 pub struct PinsAndCheckers {
-    pub pins: [BitBoard; 64], // pinned piece locations indexing within-pin move masks; !0 for no pin
-    pub check_mask: BitBoard // optimisation. not in check -> !0, single check is a nontrivial ray, double check -> 0
+    // pinned piece locations indexing within-pin move masks; !0 for no pin
+    pub pins: [BitBoard; 64],
+    // optimisation. not in check -> !0, single check is a nontrivial ray, double check -> 0
+    pub check_mask: BitBoard
 }
 
 // pins, checks, aggregates
@@ -79,13 +81,15 @@ impl BitBoards {
 
     pub fn get_pins_and_checks(&self, side_to_move: PieceColour) -> PinsAndCheckers {
         // side to move should be the side with the king which may be in check / pieces which may be pinned
+
         let pinning_side = 1 - side_to_move as usize;
         let mut pin_array = [!0; 64];
         let mut check_mask = !0; // initialise with no checks
 
         let king_bb = self.pieces[side_to_move as usize][5];
-        assert!(
-            king_bb.count_ones() == 1,
+        assert_eq!(
+            king_bb.count_ones(),
+            1,
             "Wrong number of kings on {side_to_move:?} bitboards"
         );
         let king_square = king_bb.trailing_zeros() as usize;
@@ -197,8 +201,9 @@ impl BitBoards {
     fn king_attacks(&self, piece_colour: PieceColour) -> BitBoard {
         let king_bb = self.pieces[piece_colour as usize][5];
 
-        assert!(
-            king_bb.count_ones() == 1,
+        assert_eq!(
+            king_bb.count_ones(),
+            1,
             "King bitboard misfire for {piece_colour:?}"
         );
         let king_position = self.pieces[piece_colour as usize][5].trailing_zeros() as usize;
@@ -274,8 +279,9 @@ impl BitBoards {
     ) -> bool {
         let opposing_king_bb = self.pieces[1 - pinning_side][5];
 
-        assert!(
-            opposing_king_bb.count_ones() == 1,
+        assert_eq!(
+            opposing_king_bb.count_ones(),
+            1,
             "Incorrect number of kings for {pinning_side:?}"
         );
 
