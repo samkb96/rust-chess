@@ -1,7 +1,5 @@
 # rust-chess
 
-A hobby project for learning Rust. 
-
 ---
 
 ## Overview
