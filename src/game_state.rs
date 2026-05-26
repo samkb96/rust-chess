@@ -3,9 +3,10 @@ use crate::attack_masks::masks::*;
 use crate::game::*;
 use crate::mechanics::*;
 use crate::constants::*;
-use arrayvec::ArrayVec;
+use arrayvec::{ArrayString, ArrayVec};
 use macroquad::prelude::*;
 use std::io::*;
+
 #[derive(Clone)]
 pub struct GameState {
     pub bitboards: BitBoards,
@@ -74,7 +75,6 @@ impl GameState {
         // pins and checks
         let pins_and_checkers = bitboards.get_pins_and_checks(side_to_move);
 
-
         // castling rights
         let castling_rights = CastlingRights {
             white_kingside: castling.contains('K'),
@@ -113,7 +113,6 @@ impl GameState {
     pub fn initialise() -> Self {
         Self::from_fen(INITIALISATION_FEN)
     }
-
 
     pub fn make_move(&mut self, move_to_make: Move) {
 
@@ -261,7 +260,6 @@ impl GameState {
         }
 
         // castling rights lost if rook moves, king moves, rook captured
-        // TODO rewrite in a slicker way
         if move_made.piece_moved == PieceKind::King {
             match self.side_to_move {
                 PieceColour::White => {
@@ -353,7 +351,6 @@ impl GameState {
         h ^= (self.side_to_move as u128) << 37;
         h
     }
-
 }
 
 fn format_movestring(mv: Move) -> String {

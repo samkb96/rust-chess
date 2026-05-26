@@ -104,6 +104,7 @@ impl BitBoards {
 
             'slider_loop: while let Some(start) = pop_lsb(&mut opposing_sliders) {
                 'direction_loop: for &direction in slider_directions {
+
                     let ray_mask_from_opposing_slider = ATTACK_MASKS[direction][start];
 
                     if !self.opposing_king_on_unobstructed_ray(
@@ -277,8 +278,18 @@ impl BitBoards {
         start: usize,
         ray: BitBoard,
     ) -> bool {
-        let opposing_king_bb = self.pieces[1 - pinning_side][5];
 
+        // TODO
+        // bug here
+        // situation: white slider hitting black king
+        // also, white piece behind king
+        // this is being counted as an obstructed ray
+
+        // plan: isolate print statements to situation. if ray = whatever
+        // see which early False return is being sit
+        // print all the associated bitboards
+
+        let opposing_king_bb = self.pieces[1 - pinning_side][5];
         assert_eq!(
             opposing_king_bb.count_ones(),
             1,
@@ -291,10 +302,18 @@ impl BitBoards {
         };
 
         let pin_side_pieces = self.get_coloured_pieces(pinning_side); 
-
+        let king_square
         // if ray blocked by opposing pieces, no pins/checks to consider
-        let ray_excluding_king = ray & !opposing_king_bb;
-        let ray_excluding_start = ray_excluding_king & !(1u64 << start);
+        // TODO it should be ray UP TO king, not ray excluding king
+        let ray_up_to_king = ray & mask_up_to_exclusive(start, direction, );
+        let ray_excluding_start = ray_up_to_king & !(1u64 << start);
+
+        println!("pin side pieces");
+        println!("{:?}", print_bitboard(pin_side_pieces));
+        println!("ray excluding king");
+        println!("{:?}", print_bitboard(ray_excluding_king));
+        println!("ray excluding start");
+        println!("{:?}", print_bitboard(ray_excluding_start));
 
         if ray_excluding_start & pin_side_pieces != 0 {
             return false;
