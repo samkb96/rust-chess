@@ -116,10 +116,8 @@ impl BitBoards {
                     }
 
                     // include start in possible squares to move to (ie can capture pinner)
-                    let opposite_direction = (4 + direction) % 8;
 
-                    let ray_up_to_king =
-                        mask_up_to_inclusive(king_square, &opposite_direction, start);
+                    let ray_up_to_king = MASK_UP_TO_INCLUSIVE[king_square][start];
 
                     // count the number of pieces in the way to determine check/pinned/ok
                     match self.friendly_pieces_on_ray(side_to_move, ray_up_to_king) {
@@ -226,7 +224,7 @@ impl BitBoards {
                 // squares up to and including blocker are 'attacked', regardless of blocker colour (ie defended,  if blocker is same colour)
                 let blocker_square = closest_blocker(direction, blockers);
                 let ray_up_to_blocker =
-                    ray & mask_up_to_inclusive(start, &direction, blocker_square);
+                    ray & MASK_UP_TO_INCLUSIVE[start][blocker_square];
                 current_slider_attack_masks |= ray_up_to_blocker;
             } else {
                 current_slider_attack_masks |= ray;
@@ -302,20 +300,12 @@ impl BitBoards {
         };
 
         let pin_side_pieces = self.get_coloured_pieces(pinning_side); 
-        let king_square
+        let king_square = opposing_king_bb.trailing_zeros();
         // if ray blocked by opposing pieces, no pins/checks to consider
         // TODO it should be ray UP TO king, not ray excluding king
-        let ray_up_to_king = ray & mask_up_to_exclusive(start, direction, );
-        let ray_excluding_start = ray_up_to_king & !(1u64 << start);
+        let ray_up_to_king = MASK_UP_TO_EXCLUSIVE[start][king_square as usize];
 
-        println!("pin side pieces");
-        println!("{:?}", print_bitboard(pin_side_pieces));
-        println!("ray excluding king");
-        println!("{:?}", print_bitboard(ray_excluding_king));
-        println!("ray excluding start");
-        println!("{:?}", print_bitboard(ray_excluding_start));
-
-        if ray_excluding_start & pin_side_pieces != 0 {
+        if ray_up_to_king & pin_side_pieces != 0 {
             return false;
         }
 

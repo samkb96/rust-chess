@@ -146,13 +146,13 @@ def write_attack_masks(filename):
 
         lines = [f'\n\npub const {const_name.upper()}: [[BitBoard; 64]; 64] = [']
 
-        for start, end_array in array.items():
+        for start in range(64):
 
             lines.append('    [')
 
             for i in range(0, 64, 8):
 
-                end_array_rank_slice = list(end_array.values())[i: i+8]
+                end_array_rank_slice = [array[start][end] for end in range(i, i+8)]
                 rank_masks_string = ', '.join(str(bitboard) for bitboard in end_array_rank_slice)
                 lines.append(f'        {rank_masks_string},')
 
@@ -167,5 +167,7 @@ def write_attack_masks(filename):
             f.write(format_array(k, v))
         f.write('\n\n// inclusive partial masks\n\n')
         f.write(format_double_array('MASK_UP_TO_INCLUSIVE', inclusive_partial_masks))
+        f.write('\n\n// exclusive partial masks \n\n')
+        f.write(format_double_array('MASK_UP_TO_EXCLUSIVE', exclusive_partial_masks))
 
 write_attack_masks('src/attack_masks/masks.rs')

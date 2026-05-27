@@ -24,9 +24,11 @@ Aims:
 - [x] Pseudolegal move generation
 - [x] Move validation, legal move highlights
 - [x] Pin logic
-- [ ] Checking logic
+- [x] Checking logic
 - [ ] Edge cases (castling, en passant)
-- [ ] Final rule check: possible n-move position counts from selected test positions, compared with stockfish
+- [ ] Match position counts for the 5 test positions to depth 6
+  - Current matches: 0/5
+  - [ ] Write a position_to_fen helper, implement recursive difference finding search
 - [ ] Game endings (50 move draw, repetition draw, insufficient material draw, stalemate, checkmate)
 - [ ] Time controls
 
