@@ -57,10 +57,9 @@ pub fn perft_divide(fen: &str, depth: usize) -> (usize, usize, usize, usize) {
     // print comparisons
     for mv in moves {
         let my_nodes = my_counts.get(mv).cloned().unwrap_or(0);
-
-        //let sf_nodes = sf_counts.get(mv).cloned().unwrap_or(0);
-        let indicator = if my_nodes == sf_counts[mv] { "" } else { " - different" };
-        println!("{mv}: ({my_nodes}, {}){indicator}", sf_counts[mv]);
+        let stockfish_nodes = if sf_counts.contains_key(mv) { sf_counts[mv] } else {0};
+        let indicator = if my_nodes == stockfish_nodes { "" } else { " - different" };
+        println!("{mv}: ({my_nodes}, {}){indicator}", stockfish_nodes);
     }
 
     (my_total, sf_nodes, elapsed.as_millis() as usize, sf_elapsed.as_millis() as usize)

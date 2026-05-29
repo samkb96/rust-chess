@@ -17,6 +17,7 @@ Aims:
 ### Game interface
 - [x] Render board and pieces
 - [x] Drag and drop to move
+- [ ] Promotion picker
 - [ ] (On hold) Sound effects in Ableton
 
 ### Rules and Moves
@@ -25,10 +26,8 @@ Aims:
 - [x] Move validation, legal move highlights
 - [x] Pin logic
 - [x] Checking logic
-- [ ] Edge cases (castling, en passant)
-- [ ] Match position counts for the 5 test positions to depth 6
-  - Current matches: 0/5
-  - [ ] Write a position_to_fen helper, implement recursive difference finding search
+- [x] Edge cases (castling, en passant)
+- [x] Match node counts for a bunch of test positions
 - [ ] Game endings (50 move draw, repetition draw, insufficient material draw, stalemate, checkmate)
 - [ ] Time controls
 
@@ -42,7 +41,9 @@ Aims:
 - [ ] Thought process logs
 
 ### Move Generation: Possible Optimisation
+- [ ] Magic bitboards
 - [ ] Attack tables
+- [x] Partial mask tables
 - [ ] Occupancy filtering
 - [ ] Move masking
 - [ ] Incremental updates

@@ -159,7 +159,9 @@ impl BitBoards {
             while let Some(start) = pop_lsb(&mut opposing_pawns) {
                 let attacked_by_pawn = PAWN_ATTACKS[pinning_side][start];
                 if attacked_by_pawn & king_bb != 0 {
+
                     check_mask &= 1u64 << start;
+
                     if check_mask == 0 {
                         break;
                     }
@@ -277,16 +279,6 @@ impl BitBoards {
         ray: BitBoard,
     ) -> bool {
 
-        // TODO
-        // bug here
-        // situation: white slider hitting black king
-        // also, white piece behind king
-        // this is being counted as an obstructed ray
-
-        // plan: isolate print statements to situation. if ray = whatever
-        // see which early False return is being sit
-        // print all the associated bitboards
-
         let opposing_king_bb = self.pieces[1 - pinning_side][5];
         assert_eq!(
             opposing_king_bb.count_ones(),
@@ -302,7 +294,7 @@ impl BitBoards {
         let pin_side_pieces = self.get_coloured_pieces(pinning_side); 
         let king_square = opposing_king_bb.trailing_zeros();
         // if ray blocked by opposing pieces, no pins/checks to consider
-        // TODO it should be ray UP TO king, not ray excluding king
+
         let ray_up_to_king = MASK_UP_TO_EXCLUSIVE[start][king_square as usize];
 
         if ray_up_to_king & pin_side_pieces != 0 {

@@ -3,6 +3,10 @@ use rand::rng;
 use rand::seq::IteratorRandom;
 
 pub fn bot_move(game_state: &mut GameState) -> Option<Move> {
+    random_move(game_state)
+}
+
+pub fn random_move(game_state: &mut GameState) -> Option<Move> {
     let legal_moves = game_state.legal_moves();
     let mut random_generator = rng();
 
@@ -10,5 +14,6 @@ pub fn bot_move(game_state: &mut GameState) -> Option<Move> {
         game_state.make_move(move_choice);
         return Some(move_choice);
     }
+
     None
 }

@@ -18,12 +18,14 @@ const DARK_COLOUR: Color = color_u8!(167, 128, 99, 255);
 const LIGHT_COLOUR: Color = color_u8!(238, 238, 210, 255);
 const LEGAL_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(223, 130, 53, 100);
 const LAST_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(161, 12, 14, 100);
+const DEEMPHASISED_COLOUR: Color = color_u8!(153, 134, 119, 175);
 
 pub struct Board {
     drag_state: DragState,
     drag_mouse_position: Option<Vec2>,
     legal_move_highlights: Vec<usize>,
     last_move_highlight: Option<usize>,
+    pending_promotion: Option<PendingPromotion>
 }
 
 impl Board {
@@ -33,6 +35,7 @@ impl Board {
             drag_mouse_position: None,
             legal_move_highlights: vec![],
             last_move_highlight: None,
+            pending_promotion: None
         }
     }
 
@@ -66,12 +69,115 @@ impl Board {
                 Self::draw_piece_at_mouse_position(&piece, mouse_position, texture)
             }
         }
+
+        self.draw_promotion_picker(texture, font)
+    }
+
+    fn get_picker_squares(target: BoardCoordinate) -> [BoardCoordinate; 4] {
+        let file = target.file;
+        match target.rank {
+            0 => [
+                    BoardCoordinate { rank: 0, file },
+                    BoardCoordinate { rank: 1, file },
+                    BoardCoordinate { rank: 2, file },
+                    BoardCoordinate { rank: 3, file }
+            ],
+            7 => [
+                BoardCoordinate { rank: 4, file },
+                BoardCoordinate { rank: 5, file },
+                BoardCoordinate { rank: 6, file },
+                BoardCoordinate { rank: 7, file }
+            ],
+            _ => unreachable!("Calling get_picker_squares when pawn isn't at final rank")
+        }
+    }
+
+    fn draw_promotion_picker(&self, texture: &PieceTextures, font: &Font) {
+        let Some(pending_promotion) = self.pending_promotion else { return; };
+
+        let promoting_side = pending_promotion.piece.colour;
+
+        // first, draw a transparent rectangle over the whole board
+        let board_top_left = BoardCoordinate { rank: 7, file: 0 };
+        let board_top_left_pos = board_top_left.top_left_coordinate();
+
+        draw_rectangle(
+            board_top_left_pos.0,
+            board_top_left_pos.1,
+            SQUARE_SIZE * 8.0,
+            SQUARE_SIZE * 8.0,
+            DEEMPHASISED_COLOUR
+        );
+
+        // re-draw a 4-square picker region emanating from the target square
+
+        let picker_squares = Board::get_picker_squares(pending_promotion.target);
+        for i in 0..4 { picker_squares[i].draw_board_square(font) }
+
+        // add textures for promotion choices to this picker region
+
+        let target_square_top_left = pending_promotion.target.top_left_coordinate();
+
+        // get coords of target square's top left
+        let target_x = target_square_top_left.0;
+        let target_y = target_square_top_left.1;
+        
+        // rectangle's top left x is the same. y depends on the rank
+        let picker_x = target_x;
+        let picker_y = match pending_promotion.piece.colour {
+            PieceColour::White =>
+                target_y.max(Y_OFFSET),
+            PieceColour::Black =>
+                (target_y - SQUARE_SIZE * 3.0).min(Y_OFFSET + SQUARE_SIZE * 4.0)
+        };
+
+        // reorder choices depending on pawn colour, so queen is always at the edge
+        let mut choices = [
+            PieceKind::Queen,
+            PieceKind::Rook,
+            PieceKind::Bishop,
+            PieceKind::Knight
+        ];
+
+        if promoting_side == PieceColour::Black {
+            choices.reverse()
+        };
+
+        // draw the piece textures to the picker region
+
+        for (index, &kind) in choices.iter().enumerate() {
+            let piece = Piece {
+                kind,
+                colour: pending_promotion.piece.colour
+            };
+
+            let y_pos_base = picker_y + index as f32 * SQUARE_SIZE;
+
+            let piece_texture = texture.get(&piece);
+            let piece_width = piece_texture.width();
+            let piece_height = piece_texture.height();
+
+            let piece_x_centre = picker_x + (SQUARE_SIZE - piece_width) / 2.0;
+            let piece_y_centre = y_pos_base + (SQUARE_SIZE - piece_height) / 2.0;
+
+            draw_texture_ex(
+                piece_texture,
+                piece_x_centre,
+                piece_y_centre,
+                WHITE,
+                DrawTextureParams {
+                    ..Default::default()
+                }
+            );
+        }
     }
 
     pub fn update(&mut self, game_state: &mut GameState, mouse_position: Vec2) {
         if is_key_pressed(KeyCode::Z) {
             game_state.unmake_move()
         }
+
+        self.promotion_picker_handler(game_state, mouse_position);
 
         match self.drag_state {
             DragState::None => self.dragstate_handler_none(game_state, mouse_position),
@@ -82,6 +188,61 @@ impl Board {
                 self.dragstate_handler_dragging(game_state, mouse_position, piece, origin)
             }
         }
+    }
+
+    fn promotion_choice_from_mouse_pos(&self, mouse_position: Vec2) -> Option<PieceKind> {
+        
+        let pending_promotion = self.pending_promotion
+                .expect("No pending promotion in gamestate while handling picker, somehow");
+
+        let side_to_promote = pending_promotion.piece.colour;
+        let picker_file = pending_promotion.target.file;
+
+        let chosen_coordinate =
+            BoardCoordinate::mouse_pos_to_coordinate(mouse_position)?; // clicked off board
+
+        if chosen_coordinate.file != picker_file { return None }; // clicked outside picker file
+
+        let piece_kind = match (side_to_promote, chosen_coordinate.rank) {
+            (PieceColour::White, 7) | (PieceColour::Black, 0) => PieceKind::Queen,
+            (PieceColour::White, 6) | (PieceColour::Black, 1) => PieceKind::Rook,
+            (PieceColour::White, 5) | (PieceColour::Black, 2) => PieceKind::Bishop,
+            (PieceColour::White, 4) | (PieceColour::Black, 3) => PieceKind::Knight,
+            _ => return None
+        };
+
+        Some(piece_kind)
+    }
+
+    fn promotion_picker_handler(&mut self, game_state: &mut GameState, mouse_position: Vec2) {
+
+        // don't return any selection until we click
+        if !is_mouse_button_pressed(MouseButton::Left) { return; }
+
+        // if no promotion situation to handle, don't bother
+        let Some(pending_promotion) = self.pending_promotion else { return; };
+
+        // get promotion choice from successful mouse click on picker, otherwise return;
+        let Some(choice_of_promotion_piece) =
+            self.promotion_choice_from_mouse_pos(mouse_position) else { return };
+        println!("Piece chosen");
+        let candidate_move = self.candidate_move(
+            game_state,
+            pending_promotion.origin,
+            pending_promotion.target,
+            pending_promotion.piece,
+            Some(choice_of_promotion_piece)
+        );
+
+        // move should already be legal, checked in is_legal_promotion_attempt()
+
+        game_state.make_move(candidate_move);
+        self.last_move_highlight = Some(candidate_move.end_square);
+        if BOT_INPUT {
+            self.last_move_highlight = bot_move(game_state).map(|mv| mv.end_square);
+        }
+        self.pending_promotion = None;
+
     }
 
     fn draw_piece_at_mouse_position(piece: &Piece, mouse_position: Vec2, textures: &PieceTextures) {
@@ -189,7 +350,22 @@ impl Board {
         if is_mouse_button_released(MouseButton::Left) {
             let target = BoardCoordinate::mouse_pos_to_coordinate(mouse_position).unwrap_or(origin);
 
-            let candidate_move = self.candidate_move(game_state, origin, target, piece, None); // TODO promotion choice input
+            // separate control flow if we're pushing a pawn to the last rank
+            // we check that promotion is legal here to avoid bringing up the picker
+            if self.is_legal_promotion_attempt(game_state, piece, origin, target, &relevant_legal_moves) {
+                // set up pending promotion if this happens
+                // we initialise with piece = pawn
+                // this piece kind is then set to the actual promotion choice within the handler
+                self.pending_promotion = Some(PendingPromotion { origin, target, piece });
+
+                // we're not dragging anymore; promotion picker is click-only
+                // clear dragstate and highlights
+                self.legal_move_highlights = Vec::new();
+                self.drag_mouse_position = None;
+                self.drag_state = DragState::None;
+            }
+
+            let candidate_move = self.candidate_move(game_state, origin, target, piece, None);
 
             if relevant_legal_moves.contains(&candidate_move) {
 
@@ -204,6 +380,40 @@ impl Board {
             self.drag_mouse_position = None;
             self.drag_state = DragState::None;
         }
+    }
+
+    fn is_legal_promotion_attempt(
+        &self,
+        game_state: &GameState,
+        piece: Piece,
+        origin: BoardCoordinate,
+        target: BoardCoordinate,
+        relevant_legal_moves: &Moves
+    ) -> bool {
+        // early return if we're not moving a pawn
+
+        if piece.kind != PieceKind::Pawn { return false; };
+
+        let piece_colour = piece.colour;
+        let target_rank = target.rank;
+
+        // return false for pawns of appropriate colour on inappropriate rank
+        if 7 * (1 - piece_colour as u8) != target_rank { return false; };
+
+        // passing all these checks means we are attempting to promote
+        // just need to check for legality
+
+        let candidate_move = self.candidate_move(
+            game_state,
+            origin,
+            target,
+            piece,
+            Some(PieceKind::Queen)
+        );
+
+        if relevant_legal_moves.contains(&candidate_move) { return true };
+
+        unreachable!("Logic error in is_legal_promotion_attempt")
     }
 
     fn candidate_move(
@@ -222,7 +432,6 @@ impl Board {
             .map(|piece| piece.kind);
 
         let candidate_move_type = Self::generate_move_type(origin, target, piece, target_square_occupant);
-
 
         if let Some(promotion_choice) = promotion {
             return Move::promotion(start, end, promotion_choice, target_square_occupant)
@@ -442,6 +651,13 @@ impl PieceTextures {
             .get(&(piece))
             .expect("Unable to load piece texture for piece {piece}")
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct PendingPromotion {
+    origin: BoardCoordinate,
+    target: BoardCoordinate,
+    piece: Piece
 }
 
 pub fn file_from_int(n: u8) -> Option<char> {

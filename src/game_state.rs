@@ -16,7 +16,7 @@ pub struct GameState {
     en_passant_square: Option<BitBoard>,
     halfmove_clock: u16,
     fullmove_number: u16,
-    pub previous_state: StateCache,
+    pub previous_state: StateCache
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -366,9 +366,6 @@ fn format_movestring(mv: Move) -> String {
     format!("Move: {start_str}{end_str}. Piece moved: {piece_str}. Captured: {captured_str}")
 }
 
-
-// TODO castling logic (no castling through check, castling rights)
-// TODO that one stupid en passant edge case that's not covered by pin logic
 // piece move generators 
 impl GameState {
     pub fn legal_moves(&self) -> Moves {
@@ -390,6 +387,7 @@ impl GameState {
     }
 
     fn pawn_moves(&self, piece_colour: PieceColour) -> Moves {
+
         let mut moves: Moves = ArrayVec::new();
 
         let pin_array = self.pins_and_checkers.pins;
@@ -416,6 +414,7 @@ impl GameState {
             if !(0..64).contains(&end) {
                 continue;
             }
+
             let end_square_illegal = (pin_and_check_mask & (1u64 << end)) == 0;
             // in order to move one or two squares, first square must be empty, and pin direction must be vertical
             if is_empty(self.bitboards.occupied, end) {
@@ -444,10 +443,12 @@ impl GameState {
 
             while let Some(end) = pop_lsb(&mut pawn_attack_mask) {
                 let end_square_illegal = (pin_and_check_mask & (1u64 << end)) == 0;
+
                 // to capture out of a pin, we must be capturing the pinning piece
                 if let Some(captured_piece) = self.bitboards.enemy_at_square(end, piece_colour) {
+
                     if !end_square_illegal {
-                        if is_promotion_rank(piece_colour, start) {
+                        if is_promotion_rank(piece_colour, end) {
                             moves.extend(Move::promotions(start, end, Some(captured_piece)))
                         } else {
                             moves.push(Move::capture(start, end, PieceKind::Pawn, captured_piece));
@@ -457,13 +458,90 @@ impl GameState {
 
                 // en passant
                 if let Some(en_passant_square) = self.en_passant_square {
-                    if ((1u64 << end & en_passant_square) != 0) && !end_square_illegal {
-                        moves.push(Move::en_passant(start, end));
+                    // need a function for that stupid edge case
+                    if (1u64 << end & en_passant_square) != 0 { // is the end square the EP square
+                        if !end_square_illegal {
+                            if !self.en_passant_double_pin_situation(start) { // rule out edge case
+                                moves.push(Move::en_passant(start, end));
+                            }
+                        }
+                        if self.en_passant_capture_of_a_checking_pawn(start) { // this illegal move isn't actually illegal
+                            moves.push(Move::en_passant(start, end))
+                        }
                     }
                 }
             }
         }
         moves
+    }
+
+    fn en_passant_capture_of_a_checking_pawn(&self, start: usize) -> bool {
+
+        if self.pins_and_checkers.check_mask == !0 { return false }; // need to be in check
+
+        if self.pins_and_checkers.check_mask == 0 { return false }; // can't be double check
+
+        let side_to_move = self.side_to_move;
+
+        let en_passant_square_index = self.en_passant_square
+                .expect("EP square exists within EP capture function")
+                .trailing_zeros() as usize;
+
+        let en_passant_capturable_piece_bitboard = match side_to_move {
+            PieceColour::White => 1u64 << (en_passant_square_index - 8), // black pawn behind EP square
+            PieceColour::Black => 1u64 << (en_passant_square_index + 8) // white pawn ahead of EP square
+        };
+
+
+        if en_passant_capturable_piece_bitboard & self.pins_and_checkers.check_mask == 0 {
+            return false // EP capturable pawn must be the thing checking
+        }
+
+        // also need to check that the pawn doing the capture isn't pinned
+        if self.pins_and_checkers.pins[start] != !0 { return false }
+
+        // if it's passed all these tests, then EP capture of checking pawn should be legal
+        return true
+    }
+
+    fn en_passant_double_pin_situation(&self, start: usize) -> bool {
+
+        let side_to_move = self.side_to_move as usize;
+        let opposing_side = 1 - side_to_move;
+        let start_rank = start / 8;
+
+        let rank_bitboard = (255u64 << 8 * start_rank) as BitBoard; // 255 is rank 0
+
+        // are we on same rank as our king
+        let king_bitboard = self.bitboards.pieces[side_to_move][5];
+        if king_bitboard & rank_bitboard == 0 { return false };
+
+        // are there enemy rooks/queens on this rank
+        let enemy_rooks = self.bitboards.pieces[opposing_side][3];
+        let enemy_queens = self.bitboards.pieces[opposing_side][4];
+        let mut enemy_horizontal_sliders_on_rank =
+            (enemy_rooks | enemy_queens) & rank_bitboard;
+
+        if enemy_horizontal_sliders_on_rank == 0 { return false }
+
+        // check rays under attack towards king of pieces on this rank
+
+        let our_pawn_bitboard = 1u64 << start;
+        let our_king_index = king_bitboard.trailing_zeros() as usize;
+        while let Some(enemy_slider_index) = pop_lsb(&mut enemy_horizontal_sliders_on_rank) {
+
+            // are we between the slider and the king
+            let ray_between_slider_and_king = MASK_UP_TO_EXCLUSIVE[our_king_index][enemy_slider_index];
+            if ray_between_slider_and_king & our_pawn_bitboard == 0 { return false }
+
+            // are the two pawns involved in the en passant the only things on the ray;
+            let all_pieces = self.bitboards.occupied;
+            if (all_pieces & ray_between_slider_and_king).count_ones() == 2 {
+                return true // somehow, it's that incredibly rare situation
+            }
+        }
+
+        return false
     }
 
     fn knight_moves(&self, piece_colour: PieceColour) -> Moves {
@@ -659,6 +737,79 @@ impl GameState {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub enum GameEnding {
+    WhiteWins,
+    BlackWins,
+    Draw
+}
+
+// game endings
+impl GameState {
+    fn game_is_over(&self, legal_moves: Moves) -> Option<GameEnding> {
+        // first look for checkmate / stalemate
+        if legal_moves.len() == 0 {
+            if self.pins_and_checkers.check_mask != !0 {
+                // no moves, and in check -> checkmate. win for 1 - side_to_move
+                match self.side_to_move {
+                    PieceColour::White => return Some(GameEnding::BlackWins),
+                    PieceColour::Black => return Some(GameEnding::WhiteWins),
+                }
+            } else {
+                // no moves, no check -> stalemate
+                return Some(GameEnding::Draw)
+            }
+        }
+
+        // various draws
+
+        // halfmove rule
+        if self.halfmove_clock >= 50 {
+            return Some(GameEnding::Draw)
+        }
+
+        // insufficient material
+        if self.draw_by_insufficient_material() {
+            return Some(GameEnding::Draw)
+        }
+
+        // TODO repetition. much easier with zobrist hashing
+        return None
+    }
+    fn draw_by_insufficient_material(&self) -> bool{
+        // going by 'possible checkmate' version rather than 'forced checkmate'
+
+        // any pawns, rooks, queens -> not a draw
+        let pawns = self.bitboards.pieces[0][3] | self.bitboards.pieces[1][3];
+        let rooks = self.bitboards.pieces[0][3] | self.bitboards.pieces[1][3];
+        let queens = self.bitboards.pieces[0][4] | self.bitboards.pieces[1][4];
+        if (pawns | rooks | queens) != 0 { return false };
+
+        // deal with the particulars of knights & bishop combinations
+        // two knights, knight and bishop, opposite colour bishops all sufficient
+
+        let light_squares = 0x55AA55AA55AA55AAu64;
+        let dark_squares = 0xAA55AA55AA55AA55u64;
+
+        for side in [0usize, 1usize] {
+            let knights = self.bitboards.pieces[side][1];
+            if knights.count_ones() > 1 { return false }; // two knights
+
+            let bishops = self.bitboards.pieces[side][2];
+            let light_square_bishops = bishops & light_squares;
+            let dark_square_bishops = bishops & light_squares;
+
+            if (knights != 0) && (bishops != 0) { return false }; // knight and bishop
+            if (light_square_bishops != 0) && (dark_square_bishops != 0) { return false }; // opposite bishops
+        }
+        return true
+    }
+
+    fn draw_by_threefold_repetition(&self) -> bool {
+        // too expensive without hashing. need to keep a hash
+        return false
+    }
+}
 #[allow(dead_code)]
 pub fn usize_to_square_name(square_index: usize) -> String {
     let coord = BoardCoordinate::from_usize(square_index);

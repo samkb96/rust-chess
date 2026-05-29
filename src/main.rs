@@ -25,13 +25,13 @@ const START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 
 #[cfg(not(feature = "perft"))]
 #[macroquad::main(window_conf)]
 async fn main() {
-    run_gui(TEST_4).await;
+    run_gui(START_FEN).await;
 }
 
 // perft mode for debugging / performance testing; accessed with cargo perft
 #[cfg(feature = "perft")]
 fn main() {
-    call_perft(TEST_5, 5)
+    call_perft(TEST_SUITE_12, 4)
 }
 
 // START POSITION CONSTANTS
@@ -53,7 +53,6 @@ async fn run_gui(fen: &str) {
 
         board.draw_to_screen(&game_state, &textures, &aptos);
         board.update(&mut game_state, mouse_position().into());
-        game_state.bitboards.draw_attack_masks_to_screen(&aptos);
         draw_framerate(&aptos);
 
         next_frame().await;
@@ -76,27 +75,3 @@ fn call_perft(fen: &str, depth: usize) {
     println!("Time taken: {total_time_ms}ms. Stockfish: {sf_time_ms}ms.");
     println!("Nodes per millisecond: {nps}. Stockfish: {sf_nps}.");
 }
-
-// TEST POSITIONS
-// TODO: match all test positions to depth 6
-// still need some for draws by 50 move / insufficient material / repetition
-
-// castling, en passant, pins
-// Match status: errors at depth 4 (eg a1b1)
-const TEST_1: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
-
-// endgame, en passant edge cases
-// Match status: errors at depth 2 (eg e2e4)
-const TEST_2: &str = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1";
-
-// promotion
-// Match status: errors at depth 2 (eg c4c5)
-const TEST_3: &str = "r3k2r/Pppp1ppp/1b3nbN/nP6/2P1P3/8/Pp1P2PP/R2Q1RK1 w kq - 0 1";
-
-// discovered check, promotion
-// panics immediately
-const TEST_4: &str = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
-
-// middlegame; more for actual performance testing
-// matched to depth 5. depth 6 would probably take half an hour
-const TEST_5: &str = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10";
