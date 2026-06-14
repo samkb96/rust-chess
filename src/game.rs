@@ -1,4 +1,4 @@
-use crate::engine::*;
+use crate::engines::*;
 use crate::game_state::*;
 use crate::mechanics::*;
 use crate::constants::*;
@@ -21,6 +21,7 @@ const LAST_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(161, 12, 14, 100);
 const DEEMPHASISED_COLOUR: Color = color_u8!(153, 134, 119, 175);
 
 pub struct Board {
+    human_input: bool, 
     drag_state: DragState,
     drag_mouse_position: Option<Vec2>,
     legal_move_highlights: Vec<usize>,
@@ -30,8 +31,9 @@ pub struct Board {
 }
 
 impl Board {
-    pub fn initialise() -> Self {
+    pub fn initialise(human_input: bool) -> Self {
         Board {
+            human_input, 
             drag_state: DragState::None,
             drag_mouse_position: None,
             legal_move_highlights: vec![],

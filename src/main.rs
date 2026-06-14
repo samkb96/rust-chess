@@ -2,7 +2,7 @@
 #![allow(unused_imports)]
 mod attack_masks;
 mod constants;
-mod engine;
+mod engines;
 mod game;
 mod game_state;
 mod mechanics;
@@ -20,26 +20,34 @@ use ::rand::{rng, Rng};
 use ::rand::seq::SliceRandom;
 use std::time::Duration;
 use macroquad::time::*;
+use std::env;
 
 const START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const MIDGAME_TEST: &str = "r1bqk2r/pp1p1ppp/2n1pn2/8/1bPPP3/2N2N2/PPQ2PPP/R1B1KB1R w KQkq - 1 8";
-// white plays 
 
 #[cfg(not(feature = "perft"))]
-#[macroquad::main(window_conf)]
+#[macroquad::main(window_conf)] 
 async fn main() {
-    run_gui(MIDGAME_TEST).await;
+    let args: Vec<String> = env::args().collect();
+    dbg!(&args);
+    // parse commands to determine which bots are to play
+    let game_mode = &args[1];
+    if game_mode == "bvb" {
+        let white_bot = &args[2];
+        let black_bot = &args[3];
+    }
+    run_gui(START_FEN, game_mode == "bvb").await;
 }
 
 // perft mode for debugging / performance testing; accessed with cargo perft
 #[cfg(feature = "perft")]
 fn main() {
-    call_perft(TEST_SUITE_12, 4)
+    call_perft(MIDGAME_TEST, 4)
 }
 
 // START POSITION CONSTANTS
 
-async fn run_gui(fen: &str) {
+async fn run_gui(fen: &str, human_input: bool) {
     request_new_screen_size(WINDOW_WIDTH, WINDOW_HEIGHT);
     let textures = PieceTextures::new().await;
     let aptos: Font = load_ttf_font("assets/fonts/aptos-light.ttf")
@@ -47,7 +55,7 @@ async fn run_gui(fen: &str) {
         .expect("failed to load font");
 
     let mut game_state = GameState::from_fen(fen);
-    let mut board = Board::initialise();
+    let mut board = Board::initialise(human_input);
 
     loop {
         if kill_game() { break; }

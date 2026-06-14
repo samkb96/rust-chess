@@ -5,6 +5,42 @@ use macroquad::prelude::*;
 
 type Evaluation = i32;
 
+pub enum BotList {
+    Random,
+    Negamax,
+}
+
+pub struct Bot {
+    search_engine: Box<dyn SearchEngine>, 
+    evaluator: Box<dyn Evaluator>
+}
+
+pub trait SearchEngine: Send + Sync {
+    fn search(&self, search_state: &mut GameState, side_to_move: PieceColour, search_data: &mut SearchData) -> Option<Move>;
+}
+
+pub trait Evaluator: Send + Sync {
+    fn evaluate(&self, search_state: &GameState) -> Evaluation;
+}
+
+impl Bot {
+    pub fn make_move(&self, game_state: &mut GameState) -> Option<Move> {
+        let mut search_data = SearchData::new();
+        let search_start_time = Instant::now();
+        // remove the clone once it's all working
+        let mut search_state = game_state.clone();
+
+        if let Some(move_choice) = self.search_engine.search(&mut search_state, game_state.side_to_move, &mut search_data) {
+            game_state.make_move(move_choice);
+            search_data.time_taken = search_start_time.elapsed();
+            search_data.log_search_results();
+            return Some(move_choice)
+        }
+
+        None
+    }
+}
+
 pub struct SearchData {
     current_eval: i32,
     nodes_evaluated: u64,
