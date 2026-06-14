@@ -5,7 +5,7 @@ use crate::constants::*;
 use macroquad::prelude::*;
 use std::collections::HashMap;
 
-const BOT_INPUT: bool = false;
+const BOT_INPUT: bool = true;
 
 pub const WINDOW_WIDTH: f32 = SQUARE_SIZE * 14.;
 pub const WINDOW_HEIGHT: f32 = SQUARE_SIZE * 9.5;
@@ -25,7 +25,8 @@ pub struct Board {
     drag_mouse_position: Option<Vec2>,
     legal_move_highlights: Vec<usize>,
     last_move_highlight: Option<usize>,
-    pending_promotion: Option<PendingPromotion>
+    pending_promotion: Option<PendingPromotion>,
+    bot_move_pending: bool,
 }
 
 impl Board {
@@ -35,7 +36,8 @@ impl Board {
             drag_mouse_position: None,
             legal_move_highlights: vec![],
             last_move_highlight: None,
-            pending_promotion: None
+            pending_promotion: None,
+            bot_move_pending: false,
         }
     }
 
@@ -121,7 +123,7 @@ impl Board {
         // get coords of target square's top left
         let target_x = target_square_top_left.0;
         let target_y = target_square_top_left.1;
-        
+
         // rectangle's top left x is the same. y depends on the rank
         let picker_x = target_x;
         let picker_y = match pending_promotion.piece.colour {
@@ -191,7 +193,7 @@ impl Board {
     }
 
     fn promotion_choice_from_mouse_pos(&self, mouse_position: Vec2) -> Option<PieceKind> {
-        
+
         let pending_promotion = self.pending_promotion
                 .expect("No pending promotion in gamestate while handling picker, somehow");
 
@@ -238,6 +240,11 @@ impl Board {
 
         game_state.make_move(candidate_move);
         self.last_move_highlight = Some(candidate_move.end_square);
+        // TODO: add pending_bot_move bool field in the struct
+        // set to true here
+        // make the bot move at the beginning of update if the bool is true
+        // this means the piece is set down in the right square, and bot only calculates next frame
+        // need to rework bot logic in the promotion picker too
         if BOT_INPUT {
             self.last_move_highlight = bot_move(game_state).map(|mv| mv.end_square);
         }
@@ -318,12 +325,7 @@ impl Board {
         }
     }
 
-    fn dragstate_handler_started(
-        &mut self,
-        mouse_position: Vec2,
-        piece: Piece,
-        origin: BoardCoordinate,
-    ) {
+    fn dragstate_handler_started(&mut self, mouse_position: Vec2, piece: Piece, origin: BoardCoordinate) {
         if is_mouse_button_down(MouseButton::Left) {
             // if piece is held, move into drag mode
             self.drag_state = DragState::Dragging { piece, origin };

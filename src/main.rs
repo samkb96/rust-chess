@@ -8,6 +8,7 @@ mod game_state;
 mod mechanics;
 mod tests;
 
+
 use game::*;
 use macroquad::prelude::*;
 use game_state::*;
@@ -21,11 +22,13 @@ use std::time::Duration;
 use macroquad::time::*;
 
 const START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const MIDGAME_TEST: &str = "r1bqk2r/pp1p1ppp/2n1pn2/8/1bPPP3/2N2N2/PPQ2PPP/R1B1KB1R w KQkq - 1 8";
+// white plays 
 
 #[cfg(not(feature = "perft"))]
 #[macroquad::main(window_conf)]
 async fn main() {
-    run_gui(START_FEN).await;
+    run_gui(MIDGAME_TEST).await;
 }
 
 // perft mode for debugging / performance testing; accessed with cargo perft

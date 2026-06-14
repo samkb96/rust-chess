@@ -10,12 +10,12 @@ use std::io::*;
 #[derive(Clone)]
 pub struct GameState {
     pub bitboards: BitBoards,
-    pins_and_checkers: PinsAndCheckers,
-    side_to_move: PieceColour,
-    castling_rights: CastlingRights,
-    en_passant_square: Option<BitBoard>,
-    halfmove_clock: u16,
-    fullmove_number: u16,
+    pub pins_and_checkers: PinsAndCheckers,
+    pub side_to_move: PieceColour,
+    pub castling_rights: CastlingRights,
+    pub en_passant_square: Option<BitBoard>,
+    pub halfmove_clock: u16,
+    pub fullmove_number: u16,
     pub previous_state: StateCache
 }
 

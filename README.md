@@ -17,7 +17,7 @@ Aims:
 ### Game interface
 - [x] Render board and pieces
 - [x] Drag and drop to move
-- [ ] Promotion picker
+- [x] Promotion picker
 - [ ] (On hold) Sound effects in Ableton
 
 ### Rules and Moves
@@ -33,7 +33,7 @@ Aims:
 
 ### Bot v1
 - [ ] Simple evaluation function: material evaluation, piece-square tables
-- [ ] Simple search: minimax, alpha-beta
+- [ ] Simple search: negamax, alpha-beta
 
 ### Analytics
 - [ ] Speed test metrics
