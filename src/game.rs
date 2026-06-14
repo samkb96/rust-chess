@@ -1,11 +1,9 @@
-use crate::engines::*;
+use crate::engine_handler::*;
 use crate::game_state::*;
 use crate::mechanics::*;
 use crate::constants::*;
 use macroquad::prelude::*;
 use std::collections::HashMap;
-
-const BOT_INPUT: bool = true;
 
 pub const WINDOW_WIDTH: f32 = SQUARE_SIZE * 14.;
 pub const WINDOW_HEIGHT: f32 = SQUARE_SIZE * 9.5;
@@ -21,40 +19,32 @@ const LAST_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(161, 12, 14, 100);
 const DEEMPHASISED_COLOUR: Color = color_u8!(153, 134, 119, 175);
 
 pub struct Board {
-    human_input: bool, 
     drag_state: DragState,
     drag_mouse_position: Option<Vec2>,
     legal_move_highlights: Vec<usize>,
     last_move_highlight: Option<usize>,
     pending_promotion: Option<PendingPromotion>,
-    bot_move_pending: bool,
 }
 
 impl Board {
-    pub fn initialise(human_input: bool) -> Self {
+    pub fn initialise() -> Self {
         Board {
-            human_input, 
             drag_state: DragState::None,
             drag_mouse_position: None,
             legal_move_highlights: vec![],
             last_move_highlight: None,
             pending_promotion: None,
-            bot_move_pending: false,
         }
     }
 
-    pub fn draw_to_screen(&self, game_state: &GameState, texture: &PieceTextures, font: &Font) {
-        // draw board
+    fn draw_whole_board(&self, font: &Font) {
         for square_idx in 0..64 {
             let coord = BoardCoordinate::from_usize(square_idx);
             BoardCoordinate::draw_board_square(&coord, font);
         }
+    }
 
-        // draw highlights on top
-        self.legal_move_highlights();
-        self.last_move_highlights();
-
-        // draw pieces on top of highlights
+    fn draw_pieces(&self, game_state: &GameState, texture: &PieceTextures) {
         for square_idx in 0..64 {
             let coord = BoardCoordinate::from_usize(square_idx);
             if let Some(piece) = game_state.bitboards.piece_at_square(square_idx) {
@@ -64,6 +54,46 @@ impl Board {
                 }
             }
         }
+    }
+
+
+
+}
+
+// bot version
+impl Board {
+    pub fn draw_bot_game_to_screen(&self, game_state: &GameState, texture: &PieceTextures, font: &Font) {
+        self.draw_whole_board(font);
+        self.last_move_highlights();
+        self.draw_pieces(game_state, texture);
+    }
+
+    pub fn update_bot_game(&self, game_state: &mut GameState, white_bot: &Bot, black_bot: &Bot) {
+        let side_to_move = game_state.side_to_move;
+        
+        let move_to_make = match side_to_move {
+            PieceColour::White => white_bot.choose_move(game_state),
+            PieceColour::Black => black_bot.choose_move(game_state),
+        };
+
+        if let Some(valid_move) = move_to_make {
+            game_state.make_move(valid_move)
+        } else {
+            let end_result = game_state.game_is_over(&side_to_move, &game_state.legal_moves()).expect("No bot move found, despite no game over");
+            dbg!(end_result);
+        }   
+    }
+}
+
+// human input version
+impl Board {
+
+    pub fn draw_human_game_to_screen(&self, game_state: &GameState, texture: &PieceTextures, font: &Font) {
+
+        self.draw_whole_board(font);
+        self.legal_move_highlights();
+        self.last_move_highlights();
+        self.draw_pieces(game_state, texture);
 
         // dragged piece drawn on top of everything
         if let Some(mouse_position) = self.drag_mouse_position {
@@ -77,6 +107,27 @@ impl Board {
         self.draw_promotion_picker(texture, font)
     }
 
+    pub fn update_human_game(&mut self, game_state: &mut GameState, mouse_position: Vec2) {
+        if is_key_pressed(KeyCode::Z) {
+            game_state.unmake_move()
+        }
+
+        self.promotion_picker_handler(game_state, mouse_position);
+
+        match self.drag_state {
+            DragState::None => self.dragstate_handler_none(game_state, mouse_position),
+            DragState::Started { piece, origin } => {
+                self.dragstate_handler_started(mouse_position, piece, origin)
+            }
+            DragState::Dragging { piece, origin } => {
+                self.dragstate_handler_dragging(game_state, mouse_position, piece, origin)
+            }
+        }
+    }
+}
+
+// human helpers
+impl Board {
     fn get_picker_squares(target: BoardCoordinate) -> [BoardCoordinate; 4] {
         let file = target.file;
         match target.rank {
@@ -176,24 +227,6 @@ impl Board {
         }
     }
 
-    pub fn update(&mut self, game_state: &mut GameState, mouse_position: Vec2) {
-        if is_key_pressed(KeyCode::Z) {
-            game_state.unmake_move()
-        }
-
-        self.promotion_picker_handler(game_state, mouse_position);
-
-        match self.drag_state {
-            DragState::None => self.dragstate_handler_none(game_state, mouse_position),
-            DragState::Started { piece, origin } => {
-                self.dragstate_handler_started(mouse_position, piece, origin)
-            }
-            DragState::Dragging { piece, origin } => {
-                self.dragstate_handler_dragging(game_state, mouse_position, piece, origin)
-            }
-        }
-    }
-
     fn promotion_choice_from_mouse_pos(&self, mouse_position: Vec2) -> Option<PieceKind> {
 
         let pending_promotion = self.pending_promotion
@@ -242,14 +275,8 @@ impl Board {
 
         game_state.make_move(candidate_move);
         self.last_move_highlight = Some(candidate_move.end_square);
-        // TODO: add pending_bot_move bool field in the struct
-        // set to true here
-        // make the bot move at the beginning of update if the bool is true
-        // this means the piece is set down in the right square, and bot only calculates next frame
-        // need to rework bot logic in the promotion picker too
-        if BOT_INPUT {
-            self.last_move_highlight = bot_move(game_state).map(|mv| mv.end_square);
-        }
+        // TODO: add in single player stuff
+
         self.pending_promotion = None;
 
     }
@@ -372,12 +399,8 @@ impl Board {
             let candidate_move = self.candidate_move(game_state, origin, target, piece, None);
 
             if relevant_legal_moves.contains(&candidate_move) {
-
                 game_state.make_move(candidate_move);
                 self.last_move_highlight = Some(candidate_move.end_square);
-                if BOT_INPUT {
-                    self.last_move_highlight = bot_move(game_state).map(|mv| mv.end_square);
-                }
             };
 
             self.legal_move_highlights = Vec::new();

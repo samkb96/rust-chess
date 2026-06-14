@@ -609,7 +609,6 @@ pub fn bb_to_screen_printable_string(bb: &BitBoard) -> [String; 8] {
     result
 }
 
-#[allow(dead_code)]
 pub fn print_bitboard(bb: BitBoard) {
     for rank in (0..8).rev() {
         print!("{}  ", rank + 1);

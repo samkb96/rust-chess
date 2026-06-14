@@ -25,6 +25,7 @@ pub struct PreviousState {
     castling_rights: CastlingRights,
     en_passant_square: Option<BitBoard>,
     halfmove_clock: u16,
+
 }
 
 type StateCache = Vec<PreviousState>;
@@ -337,6 +338,7 @@ impl GameState {
 
         // recalculate pins and checks
         self.pins_and_checkers = self.bitboards.get_pins_and_checks(self.side_to_move);
+
     }
 
     pub fn naive_hash(&self) -> u128 {
@@ -746,12 +748,13 @@ pub enum GameEnding {
 
 // game endings
 impl GameState {
-    fn game_is_over(&self, legal_moves: Moves) -> Option<GameEnding> {
+
+    pub fn game_is_over(&self, side_to_move: &PieceColour, legal_moves: &Moves) -> Option<GameEnding> {
         // first look for checkmate / stalemate
-        if legal_moves.len() == 0 {
+        if legal_moves.is_empty() {
             if self.pins_and_checkers.check_mask != !0 {
                 // no moves, and in check -> checkmate. win for 1 - side_to_move
-                match self.side_to_move {
+                match side_to_move {
                     PieceColour::White => return Some(GameEnding::BlackWins),
                     PieceColour::Black => return Some(GameEnding::WhiteWins),
                 }
@@ -774,16 +777,19 @@ impl GameState {
         }
 
         // TODO repetition. much easier with zobrist hashing
-        return None
+        None
     }
-    fn draw_by_insufficient_material(&self) -> bool{
+
+    fn draw_by_insufficient_material(&self) -> bool {
         // going by 'possible checkmate' version rather than 'forced checkmate'
 
         // any pawns, rooks, queens -> not a draw
         let pawns = self.bitboards.pieces[0][3] | self.bitboards.pieces[1][3];
+        if pawns != 0 { return false }
         let rooks = self.bitboards.pieces[0][3] | self.bitboards.pieces[1][3];
+        if rooks != 0 { return false }
         let queens = self.bitboards.pieces[0][4] | self.bitboards.pieces[1][4];
-        if (pawns | rooks | queens) != 0 { return false };
+        if queens != 0 { return false }
 
         // deal with the particulars of knights & bishop combinations
         // two knights, knight and bishop, opposite colour bishops all sufficient
@@ -797,11 +803,12 @@ impl GameState {
 
             let bishops = self.bitboards.pieces[side][2];
             let light_square_bishops = bishops & light_squares;
-            let dark_square_bishops = bishops & light_squares;
+            let dark_square_bishops = bishops & dark_squares;
 
             if (knights != 0) && (bishops != 0) { return false }; // knight and bishop
             if (light_square_bishops != 0) && (dark_square_bishops != 0) { return false }; // opposite bishops
         }
+
         return true
     }
 
@@ -810,7 +817,7 @@ impl GameState {
         return false
     }
 }
-#[allow(dead_code)]
+
 pub fn usize_to_square_name(square_index: usize) -> String {
     let coord = BoardCoordinate::from_usize(square_index);
     coord.square_name()

@@ -1,8 +1,9 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
+
 mod attack_masks;
 mod constants;
-mod engines;
+mod engine_handler;
+mod search_engines;
+mod evaluators;
 mod game;
 mod game_state;
 mod mechanics;
@@ -12,14 +13,8 @@ mod tests;
 use game::*;
 use macroquad::prelude::*;
 use game_state::*;
-use std::time::Instant;
 use crate::tests::*;
-
-use macroquad::time::*;
-use ::rand::{rng, Rng};
-use ::rand::seq::SliceRandom;
-use std::time::Duration;
-use macroquad::time::*;
+use crate::engine_handler::Bot;
 use std::env;
 
 const START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -28,15 +23,22 @@ const MIDGAME_TEST: &str = "r1bqk2r/pp1p1ppp/2n1pn2/8/1bPPP3/2N2N2/PPQ2PPP/R1B1K
 #[cfg(not(feature = "perft"))]
 #[macroquad::main(window_conf)] 
 async fn main() {
+
     let args: Vec<String> = env::args().collect();
-    dbg!(&args);
+
     // parse commands to determine which bots are to play
     let game_mode = &args[1];
     if game_mode == "bvb" {
-        let white_bot = &args[2];
-        let black_bot = &args[3];
+
+        println!("bot game selected");
+        let white_bot_choice = args[2].as_str();
+        let black_bot_choice = args[3].as_str();
+
+        let white_bot = Bot::create(white_bot_choice);
+        let black_bot = Bot::create(black_bot_choice);
+
+        run_gui(MIDGAME_TEST, game_mode != "bvb", &white_bot, &black_bot).await;
     }
-    run_gui(START_FEN, game_mode == "bvb").await;
 }
 
 // perft mode for debugging / performance testing; accessed with cargo perft
@@ -45,9 +47,8 @@ fn main() {
     call_perft(MIDGAME_TEST, 4)
 }
 
-// START POSITION CONSTANTS
+async fn run_gui(fen: &str, human_input: bool, white_bot: &Bot, black_bot: &Bot) {
 
-async fn run_gui(fen: &str, human_input: bool) {
     request_new_screen_size(WINDOW_WIDTH, WINDOW_HEIGHT);
     let textures = PieceTextures::new().await;
     let aptos: Font = load_ttf_font("assets/fonts/aptos-light.ttf")
@@ -55,18 +56,34 @@ async fn run_gui(fen: &str, human_input: bool) {
         .expect("failed to load font");
 
     let mut game_state = GameState::from_fen(fen);
-    let mut board = Board::initialise(human_input);
+    let mut board = Board::initialise();
 
-    loop {
-        if kill_game() { break; }
+    if human_input {
 
-        clear_background(BLACK);
+        loop {
+            if kill_game() { break; }
 
-        board.draw_to_screen(&game_state, &textures, &aptos);
-        board.update(&mut game_state, mouse_position().into());
-        draw_framerate(&aptos);
+            clear_background(BLACK);
 
-        next_frame().await;
+            board.draw_human_game_to_screen(&game_state, &textures, &aptos);
+            board.update_human_game(&mut game_state, mouse_position().into());
+            draw_framerate(&aptos);
+
+            next_frame().await;
+
+        }
+    } else {
+        loop {
+            if kill_game() { break; }
+
+            clear_background(BLACK);
+
+            board.draw_bot_game_to_screen(&game_state, &textures, &aptos);
+            board.update_bot_game(&mut game_state, white_bot, black_bot);
+
+            next_frame().await;
+
+        }
     }
 }
 
