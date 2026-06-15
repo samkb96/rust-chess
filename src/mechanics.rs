@@ -1,8 +1,8 @@
-use crate::game_state::*;
 use crate::attack_masks::masks::*;
 use crate::constants::*;
-use macroquad::prelude::*;
+use crate::game_state::*;
 use arrayvec::ArrayString;
+use macroquad::prelude::*;
 
 pub type BitBoard = u64;
 
@@ -47,10 +47,10 @@ pub struct CastlingRights {
 }
 impl CastlingRights {
     pub fn to_u8(self) -> u8 {
-        (self.white_kingside as u8) |
-        (self.white_queenside as u8) << 1 |
-        (self.black_kingside as u8) << 2 |
-        (self.black_queenside as u8) << 3
+        (self.white_kingside as u8)
+            | (self.white_queenside as u8) << 1
+            | (self.black_kingside as u8) << 2
+            | (self.black_queenside as u8) << 3
     }
 }
 
@@ -59,7 +59,7 @@ pub struct PinsAndCheckers {
     // pinned piece locations indexing within-pin move masks; !0 for no pin
     pub pins: [BitBoard; 64],
     // optimisation. not in check -> !0, single check is a nontrivial ray, double check -> 0
-    pub check_mask: BitBoard
+    pub check_mask: BitBoard,
 }
 
 // pins, checks, aggregates
@@ -104,7 +104,6 @@ impl BitBoards {
 
             'slider_loop: while let Some(start) = pop_lsb(&mut opposing_sliders) {
                 'direction_loop: for &direction in slider_directions {
-
                     let ray_mask_from_opposing_slider = ATTACK_MASKS[direction][start];
 
                     if !self.opposing_king_on_unobstructed_ray(
@@ -138,8 +137,9 @@ impl BitBoards {
                 }
             }
         }
-        
-        if check_mask != 0 { // if it's already double check, we won't find any others
+
+        if check_mask != 0 {
+            // if it's already double check, we won't find any others
             // knights
             let mut opposing_knights = self.pieces[pinning_side][1];
 
@@ -159,7 +159,6 @@ impl BitBoards {
             while let Some(start) = pop_lsb(&mut opposing_pawns) {
                 let attacked_by_pawn = PAWN_ATTACKS[pinning_side][start];
                 if attacked_by_pawn & king_bb != 0 {
-
                     check_mask &= 1u64 << start;
 
                     if check_mask == 0 {
@@ -168,8 +167,11 @@ impl BitBoards {
                 }
             }
         }
-        
-        PinsAndCheckers { pins: pin_array, check_mask }
+
+        PinsAndCheckers {
+            pins: pin_array,
+            check_mask,
+        }
     }
 }
 
@@ -212,7 +214,12 @@ impl BitBoards {
         KING_ATTACKS[king_position]
     }
 
-    fn directional_attacks(&self, slider_locations: BitBoard, slider_colour: usize, direction: usize) -> BitBoard {
+    fn directional_attacks(
+        &self,
+        slider_locations: BitBoard,
+        slider_colour: usize,
+        direction: usize,
+    ) -> BitBoard {
         let mut current_slider_attack_masks = 0u64;
         let mut sliders = slider_locations;
         let occupied = self.occupied;
@@ -225,8 +232,7 @@ impl BitBoards {
             if blockers != 0 {
                 // squares up to and including blocker are 'attacked', regardless of blocker colour (ie defended,  if blocker is same colour)
                 let blocker_square = closest_blocker(direction, blockers);
-                let ray_up_to_blocker =
-                    ray & MASK_UP_TO_INCLUSIVE[start][blocker_square];
+                let ray_up_to_blocker = ray & MASK_UP_TO_INCLUSIVE[start][blocker_square];
                 current_slider_attack_masks |= ray_up_to_blocker;
             } else {
                 current_slider_attack_masks |= ray;
@@ -248,7 +254,8 @@ impl BitBoards {
         };
 
         for &direction in directions {
-            current_slider_attack_masks |= self.directional_attacks(sliders, piece_colour as usize, direction);
+            current_slider_attack_masks |=
+                self.directional_attacks(sliders, piece_colour as usize, direction);
         }
         current_slider_attack_masks
     }
@@ -267,7 +274,6 @@ impl BitBoards {
 
 // helpers
 impl BitBoards {
-
     fn friendly_pieces_on_ray(&self, piece_colour: PieceColour, ray: BitBoard) -> u32 {
         (self.get_coloured_pieces(piece_colour as usize) & ray).count_ones()
     }
@@ -278,7 +284,6 @@ impl BitBoards {
         start: usize,
         ray: BitBoard,
     ) -> bool {
-
         let opposing_king_bb = self.pieces[1 - pinning_side][5];
         assert_eq!(
             opposing_king_bb.count_ones(),
@@ -291,7 +296,7 @@ impl BitBoards {
             return false;
         };
 
-        let pin_side_pieces = self.get_coloured_pieces(pinning_side); 
+        let pin_side_pieces = self.get_coloured_pieces(pinning_side);
         let king_square = opposing_king_bb.trailing_zeros();
         // if ray blocked by opposing pieces, no pins/checks to consider
 
@@ -482,7 +487,7 @@ impl CastlingRights {
             (MoveType::CastleQueenside, PieceColour::Black) => self.black_queenside,
             (MoveType::CastleKingside, PieceColour::White) => self.white_kingside,
             (MoveType::CastleKingside, PieceColour::Black) => self.black_kingside,
-            _ => unreachable!("you need a castling movetype")
+            _ => unreachable!("you need a castling movetype"),
         }
     }
 }

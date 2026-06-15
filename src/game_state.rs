@@ -1,8 +1,7 @@
-
 use crate::attack_masks::masks::*;
+use crate::constants::*;
 use crate::game::*;
 use crate::mechanics::*;
-use crate::constants::*;
 use arrayvec::{ArrayString, ArrayVec};
 use macroquad::prelude::*;
 use std::io::*;
@@ -16,7 +15,7 @@ pub struct GameState {
     pub en_passant_square: Option<BitBoard>,
     pub halfmove_clock: u16,
     pub fullmove_number: u16,
-    pub previous_state: StateCache
+    pub previous_state: StateCache,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -25,13 +24,11 @@ pub struct PreviousState {
     castling_rights: CastlingRights,
     en_passant_square: Option<BitBoard>,
     halfmove_clock: u16,
-
 }
 
 type StateCache = Vec<PreviousState>;
 // core methods
 impl GameState {
-
     pub fn from_fen(fen: &str) -> GameState {
         let mut bitboards = BitBoards::default();
         let mut square_index = 56;
@@ -52,8 +49,8 @@ impl GameState {
             match character {
                 '/' => {
                     square_index -= 16;
-                    continue
-                }, // new rank indicator
+                    continue;
+                } // new rank indicator
                 '1'..='8' => square_index += character.to_digit(10).unwrap(),
                 piece => {
                     let square_bit = 1u64 << square_index; // create a 64 bit 000...001, left shift the 1 to square position
@@ -65,14 +62,14 @@ impl GameState {
             }
         }
         bitboards.recompute_aggregates();
-        
+
         // side to move
         let side_to_move = match active_colour {
             "w" => PieceColour::White,
             "b" => PieceColour::Black,
-            _ => panic!("Fen string side to move invalid")
+            _ => panic!("Fen string side to move invalid"),
         };
-        
+
         // pins and checks
         let pins_and_checkers = bitboards.get_pins_and_checks(side_to_move);
 
@@ -100,7 +97,7 @@ impl GameState {
 
         // return
         GameState {
-            bitboards, 
+            bitboards,
             pins_and_checkers,
             side_to_move,
             castling_rights,
@@ -116,7 +113,6 @@ impl GameState {
     }
 
     pub fn make_move(&mut self, move_to_make: Move) {
-
         // first cache state
         self.previous_state.push(PreviousState {
             last_move: move_to_make,
@@ -136,7 +132,9 @@ impl GameState {
         // remove piece at start
         self.bitboards.pieces[colour_moved as usize][piece_moved as usize] ^= start_bitboard;
 
-        if let Some(captured) = move_to_make.captured && move_type == MoveType::Normal {
+        if let Some(captured) = move_to_make.captured
+            && move_type == MoveType::Normal
+        {
             // remove captured piece
             self.bitboards.pieces[1 - (colour_moved as usize)][captured as usize] ^= end_bitboard;
         }
@@ -180,11 +178,9 @@ impl GameState {
 
         self.bitboards.recompute_aggregates();
         self.update_internal_state_params(&move_to_make);
-
     }
 
     pub fn unmake_move(&mut self) {
-
         let Some(previous_state) = self.previous_state.pop() else {
             return; // don't undo if nothing to undo
         };
@@ -215,7 +211,7 @@ impl GameState {
             let prev_ep_square = previous_state.en_passant_square.unwrap();
             let original_square = match prev_ep_square > 1u64 << 32 {
                 false => prev_ep_square << 8, // rank above ep square if white's side of the board
-                true => prev_ep_square >> 8, // rank below ep square if black's side of board
+                true => prev_ep_square >> 8,  // rank below ep square if black's side of board
             };
             self.bitboards.pieces[side_to_move][0] ^= original_square;
         }
@@ -250,11 +246,9 @@ impl GameState {
         self.en_passant_square = previous_state.en_passant_square;
 
         // self.previous_state already had most recent move etc removed from vector by .pop() called previously
-
     }
 
     fn update_internal_state_params(&mut self, move_made: &Move) {
-
         // if move not capture & not pawn move, add 1 to halfmove clock
         if move_made.captured.is_none() & !(move_made.piece_moved == PieceKind::Pawn) {
             self.halfmove_clock += 1;
@@ -338,7 +332,6 @@ impl GameState {
 
         // recalculate pins and checks
         self.pins_and_checkers = self.bitboards.get_pins_and_checks(self.side_to_move);
-
     }
 
     pub fn naive_hash(&self) -> u128 {
@@ -368,7 +361,7 @@ fn format_movestring(mv: Move) -> String {
     format!("Move: {start_str}{end_str}. Piece moved: {piece_str}. Captured: {captured_str}")
 }
 
-// piece move generators 
+// piece move generators
 impl GameState {
     pub fn legal_moves(&self) -> Moves {
         let mut moves: Moves = ArrayVec::new();
@@ -380,7 +373,7 @@ impl GameState {
         moves.extend(self.king_moves(self.side_to_move));
         moves
     }
-    
+
     pub fn legal_moves_from(&self, start: usize) -> Moves {
         self.legal_moves()
             .into_iter()
@@ -389,20 +382,18 @@ impl GameState {
     }
 
     fn pawn_moves(&self, piece_colour: PieceColour) -> Moves {
-
         let mut moves: Moves = ArrayVec::new();
 
         let pin_array = self.pins_and_checkers.pins;
         let check_mask = self.pins_and_checkers.check_mask;
 
         if check_mask == 0 {
-            return moves // double check, no legal pawn moves
+            return moves; // double check, no legal pawn moves
         }
 
         let mut pawns = self.bitboards.pieces[piece_colour as usize][0];
 
         while let Some(start) = pop_lsb(&mut pawns) {
-
             let pin_and_check_mask = pin_array[start] & check_mask;
 
             // one square forward
@@ -412,7 +403,7 @@ impl GameState {
             };
 
             let end = (start as i8 + one_step) as usize;
-            
+
             if !(0..64).contains(&end) {
                 continue;
             }
@@ -448,7 +439,6 @@ impl GameState {
 
                 // to capture out of a pin, we must be capturing the pinning piece
                 if let Some(captured_piece) = self.bitboards.enemy_at_square(end, piece_colour) {
-
                     if !end_square_illegal {
                         if is_promotion_rank(piece_colour, end) {
                             moves.extend(Move::promotions(start, end, Some(captured_piece)))
@@ -461,13 +451,16 @@ impl GameState {
                 // en passant
                 if let Some(en_passant_square) = self.en_passant_square {
                     // need a function for that stupid edge case
-                    if (1u64 << end & en_passant_square) != 0 { // is the end square the EP square
+                    if (1u64 << end & en_passant_square) != 0 {
+                        // is the end square the EP square
                         if !end_square_illegal {
-                            if !self.en_passant_double_pin_situation(start) { // rule out edge case
+                            if !self.en_passant_double_pin_situation(start) {
+                                // rule out edge case
                                 moves.push(Move::en_passant(start, end));
                             }
                         }
-                        if self.en_passant_capture_of_a_checking_pawn(start) { // this illegal move isn't actually illegal
+                        if self.en_passant_capture_of_a_checking_pawn(start) {
+                            // this illegal move isn't actually illegal
                             moves.push(Move::en_passant(start, end))
                         }
                     }
@@ -478,36 +471,40 @@ impl GameState {
     }
 
     fn en_passant_capture_of_a_checking_pawn(&self, start: usize) -> bool {
+        if self.pins_and_checkers.check_mask == !0 {
+            return false;
+        }; // need to be in check
 
-        if self.pins_and_checkers.check_mask == !0 { return false }; // need to be in check
-
-        if self.pins_and_checkers.check_mask == 0 { return false }; // can't be double check
+        if self.pins_and_checkers.check_mask == 0 {
+            return false;
+        }; // can't be double check
 
         let side_to_move = self.side_to_move;
 
-        let en_passant_square_index = self.en_passant_square
-                .expect("EP square exists within EP capture function")
-                .trailing_zeros() as usize;
+        let en_passant_square_index = self
+            .en_passant_square
+            .expect("EP square exists within EP capture function")
+            .trailing_zeros() as usize;
 
         let en_passant_capturable_piece_bitboard = match side_to_move {
             PieceColour::White => 1u64 << (en_passant_square_index - 8), // black pawn behind EP square
-            PieceColour::Black => 1u64 << (en_passant_square_index + 8) // white pawn ahead of EP square
+            PieceColour::Black => 1u64 << (en_passant_square_index + 8), // white pawn ahead of EP square
         };
 
-
         if en_passant_capturable_piece_bitboard & self.pins_and_checkers.check_mask == 0 {
-            return false // EP capturable pawn must be the thing checking
+            return false; // EP capturable pawn must be the thing checking
         }
 
         // also need to check that the pawn doing the capture isn't pinned
-        if self.pins_and_checkers.pins[start] != !0 { return false }
+        if self.pins_and_checkers.pins[start] != !0 {
+            return false;
+        }
 
         // if it's passed all these tests, then EP capture of checking pawn should be legal
-        return true
+        return true;
     }
 
     fn en_passant_double_pin_situation(&self, start: usize) -> bool {
-
         let side_to_move = self.side_to_move as usize;
         let opposing_side = 1 - side_to_move;
         let start_rank = start / 8;
@@ -516,34 +513,39 @@ impl GameState {
 
         // are we on same rank as our king
         let king_bitboard = self.bitboards.pieces[side_to_move][5];
-        if king_bitboard & rank_bitboard == 0 { return false };
+        if king_bitboard & rank_bitboard == 0 {
+            return false;
+        };
 
         // are there enemy rooks/queens on this rank
         let enemy_rooks = self.bitboards.pieces[opposing_side][3];
         let enemy_queens = self.bitboards.pieces[opposing_side][4];
-        let mut enemy_horizontal_sliders_on_rank =
-            (enemy_rooks | enemy_queens) & rank_bitboard;
+        let mut enemy_horizontal_sliders_on_rank = (enemy_rooks | enemy_queens) & rank_bitboard;
 
-        if enemy_horizontal_sliders_on_rank == 0 { return false }
+        if enemy_horizontal_sliders_on_rank == 0 {
+            return false;
+        }
 
         // check rays under attack towards king of pieces on this rank
 
         let our_pawn_bitboard = 1u64 << start;
         let our_king_index = king_bitboard.trailing_zeros() as usize;
         while let Some(enemy_slider_index) = pop_lsb(&mut enemy_horizontal_sliders_on_rank) {
-
             // are we between the slider and the king
-            let ray_between_slider_and_king = MASK_UP_TO_EXCLUSIVE[our_king_index][enemy_slider_index];
-            if ray_between_slider_and_king & our_pawn_bitboard == 0 { return false }
+            let ray_between_slider_and_king =
+                MASK_UP_TO_EXCLUSIVE[our_king_index][enemy_slider_index];
+            if ray_between_slider_and_king & our_pawn_bitboard == 0 {
+                return false;
+            }
 
             // are the two pawns involved in the en passant the only things on the ray;
             let all_pieces = self.bitboards.occupied;
             if (all_pieces & ray_between_slider_and_king).count_ones() == 2 {
-                return true // somehow, it's that incredibly rare situation
+                return true; // somehow, it's that incredibly rare situation
             }
         }
 
-        return false
+        return false;
     }
 
     fn knight_moves(&self, piece_colour: PieceColour) -> Moves {
@@ -555,7 +557,7 @@ impl GameState {
         'knights: while let Some(start) = pop_lsb(&mut knights) {
             // if pinned, move to next knight - no legal moves within the pin direction
             if pin_array[start] != !0 {
-                continue 'knights
+                continue 'knights;
             }
 
             // get attack board for square
@@ -564,7 +566,9 @@ impl GameState {
             'targets: while let Some(end) = pop_lsb(&mut knight_mask) {
                 let end_square_illegal = (1u64 << end & check_mask) == 0;
 
-                if end_square_illegal {continue 'targets}
+                if end_square_illegal {
+                    continue 'targets;
+                }
 
                 if is_empty(self.bitboards.occupied, end) {
                     moves.push(Move::quiet(start, end, PieceKind::Knight));
@@ -594,7 +598,7 @@ impl GameState {
         let check_mask = self.pins_and_checkers.check_mask;
 
         for &direction in directions {
-            let pin_and_check_mask = pin_array[start] & check_mask; 
+            let pin_and_check_mask = pin_array[start] & check_mask;
 
             let ray = ATTACK_MASKS[direction][start];
             let blockers = ray & occupied;
@@ -607,8 +611,9 @@ impl GameState {
                 // append quiet moves
                 'target_loop: while let Some(end) = pop_lsb(&mut ray_up_to_blocker) {
                     let target_square_illegal = ((1u64 << end) & pin_and_check_mask) == 0;
-                    if target_square_illegal { // move breaks pin, try next end square
-                        continue 'target_loop
+                    if target_square_illegal {
+                        // move breaks pin, try next end square
+                        continue 'target_loop;
                     }
                     moves.push(Move::quiet(start, end, piece.kind))
                 }
@@ -616,7 +621,8 @@ impl GameState {
                 // if blocker is capturable, capture it
 
                 if let Some(target_piece) = self.bitboards.piece_at_square(blocker_square) {
-                    let target_square_illegal = ((1u64 << blocker_square) & pin_and_check_mask) == 0;
+                    let target_square_illegal =
+                        ((1u64 << blocker_square) & pin_and_check_mask) == 0;
                     if (target_piece.colour != piece.colour) && !target_square_illegal {
                         moves.push(Move::capture(
                             start,
@@ -630,8 +636,9 @@ impl GameState {
                 let mut ray_open = ray;
                 'target_loop: while let Some(end) = pop_lsb(&mut ray_open) {
                     let target_square_illegal = ((1u64 << end) & pin_and_check_mask) == 0;
-                    if target_square_illegal { // move breaks pin, try next end square
-                        continue 'target_loop
+                    if target_square_illegal {
+                        // move breaks pin, try next end square
+                        continue 'target_loop;
                     }
                     moves.push(Move::quiet(start, end, piece.kind))
                 }
@@ -683,16 +690,16 @@ impl GameState {
             PieceColour::Black => self.bitboards.attacked_by_white,
         };
 
-        let start = pop_lsb(&mut king_bb)
-            .expect("No king of colour {piece_colour} left on the board");
+        let start =
+            pop_lsb(&mut king_bb).expect("No king of colour {piece_colour} left on the board");
         let mut attack_mask = KING_ATTACKS[start];
 
         while let Some(end) = pop_lsb(&mut attack_mask) {
             let moving_into_check = ((1u64 << end) & enemy_attacks) != 0;
             if moving_into_check {
-                continue
+                continue;
             }
-            
+
             if is_empty(self.bitboards.occupied, end) {
                 moves.push(Move::quiet(start, end, PieceKind::King));
             };
@@ -702,17 +709,21 @@ impl GameState {
                 .get_coloured_pieces(1 - piece_colour as usize);
 
             if is_capturable(enemies, end) {
-                let enemy = self.bitboards.enemy_at_square(end, piece_colour)
+                let enemy = self
+                    .bitboards
+                    .enemy_at_square(end, piece_colour)
                     .expect("Should never fail to unwrap enemy at capturable square");
                 moves.push(Move::capture(start, end, PieceKind::King, enemy));
             }
         }
-        
-        // castling 
+
+        // castling
         for (side_id, castling_side) in [
-            (0, MoveType::CastleQueenside), 
+            (0, MoveType::CastleQueenside),
             (1, MoveType::CastleKingside),
-            ].iter() {
+        ]
+        .iter()
+        {
             let castling_rights_valid = self.castling_rights.check(piece_colour, *castling_side);
 
             let obstruction_squares = CASTLING_SQUARES.0[piece_colour as usize][*side_id];
@@ -721,16 +732,15 @@ impl GameState {
             let vulnerable_squares = CASTLING_SQUARES.1[piece_colour as usize][*side_id];
             let prevented_by_attack = (vulnerable_squares & enemy_attacks) != 0;
 
-
             if castling_rights_valid && !prevented_by_obstruction && !prevented_by_attack {
-                let king_target= match (piece_colour, castling_side) {
+                let king_target = match (piece_colour, castling_side) {
                     (PieceColour::White, MoveType::CastleKingside) => 6,
                     (PieceColour::Black, MoveType::CastleKingside) => 62,
                     (PieceColour::White, MoveType::CastleQueenside) => 2,
                     (PieceColour::Black, MoveType::CastleQueenside) => 58,
                     _ => unreachable!("Non-castling move in castling generation"),
                 };
-                
+
                 moves.push(Move::castling(king_target, *castling_side));
             }
         }
@@ -743,13 +753,16 @@ impl GameState {
 pub enum GameEnding {
     WhiteWins,
     BlackWins,
-    Draw
+    Draw,
 }
 
 // game endings
 impl GameState {
-
-    pub fn game_is_over(&self, side_to_move: &PieceColour, legal_moves: &Moves) -> Option<GameEnding> {
+    pub fn game_is_over(
+        &self,
+        side_to_move: &PieceColour,
+        legal_moves: &Moves,
+    ) -> Option<GameEnding> {
         // first look for checkmate / stalemate
         if legal_moves.is_empty() {
             if self.pins_and_checkers.check_mask != !0 {
@@ -760,7 +773,7 @@ impl GameState {
                 }
             } else {
                 // no moves, no check -> stalemate
-                return Some(GameEnding::Draw)
+                return Some(GameEnding::Draw);
             }
         }
 
@@ -768,12 +781,12 @@ impl GameState {
 
         // halfmove rule
         if self.halfmove_clock >= 50 {
-            return Some(GameEnding::Draw)
+            return Some(GameEnding::Draw);
         }
 
         // insufficient material
         if self.draw_by_insufficient_material() {
-            return Some(GameEnding::Draw)
+            return Some(GameEnding::Draw);
         }
 
         // TODO repetition. much easier with zobrist hashing
@@ -785,11 +798,17 @@ impl GameState {
 
         // any pawns, rooks, queens -> not a draw
         let pawns = self.bitboards.pieces[0][3] | self.bitboards.pieces[1][3];
-        if pawns != 0 { return false }
+        if pawns != 0 {
+            return false;
+        }
         let rooks = self.bitboards.pieces[0][3] | self.bitboards.pieces[1][3];
-        if rooks != 0 { return false }
+        if rooks != 0 {
+            return false;
+        }
         let queens = self.bitboards.pieces[0][4] | self.bitboards.pieces[1][4];
-        if queens != 0 { return false }
+        if queens != 0 {
+            return false;
+        }
 
         // deal with the particulars of knights & bishop combinations
         // two knights, knight and bishop, opposite colour bishops all sufficient
@@ -799,22 +818,28 @@ impl GameState {
 
         for side in [0usize, 1usize] {
             let knights = self.bitboards.pieces[side][1];
-            if knights.count_ones() > 1 { return false }; // two knights
+            if knights.count_ones() > 1 {
+                return false;
+            }; // two knights
 
             let bishops = self.bitboards.pieces[side][2];
             let light_square_bishops = bishops & light_squares;
             let dark_square_bishops = bishops & dark_squares;
 
-            if (knights != 0) && (bishops != 0) { return false }; // knight and bishop
-            if (light_square_bishops != 0) && (dark_square_bishops != 0) { return false }; // opposite bishops
+            if (knights != 0) && (bishops != 0) {
+                return false;
+            }; // knight and bishop
+            if (light_square_bishops != 0) && (dark_square_bishops != 0) {
+                return false;
+            }; // opposite bishops
         }
 
-        return true
+        return true;
     }
 
     fn draw_by_threefold_repetition(&self) -> bool {
         // too expensive without hashing. need to keep a hash
-        return false
+        return false;
     }
 }
 
@@ -867,7 +892,12 @@ impl Move {
         }
     }
 
-    pub fn capture(start: usize, end: usize, piece_kind: PieceKind, target_kind: PieceKind) -> Move {
+    pub fn capture(
+        start: usize,
+        end: usize,
+        piece_kind: PieceKind,
+        target_kind: PieceKind,
+    ) -> Move {
         Move {
             start_square: start,
             end_square: end,
@@ -877,15 +907,20 @@ impl Move {
             move_type: MoveType::Normal,
         }
     }
-    
-    pub fn promotion(start: usize, end: usize, promotion_choice: PieceKind, target_kind: Option<PieceKind>) -> Move {
+
+    pub fn promotion(
+        start: usize,
+        end: usize,
+        promotion_choice: PieceKind,
+        target_kind: Option<PieceKind>,
+    ) -> Move {
         Move {
             start_square: start,
-            end_square: end, 
+            end_square: end,
             piece_moved: PieceKind::Pawn,
             captured: target_kind,
             promotion: Some(promotion_choice),
-            move_type: MoveType::Normal
+            move_type: MoveType::Normal,
         }
     }
     pub fn promotions(start: usize, end: usize, target_kind: Option<PieceKind>) -> Moves {
@@ -914,9 +949,9 @@ impl Move {
 
     pub fn castling(end: usize, castling_side: MoveType) -> Move {
         let start = match end {
-            2|6 => 4,
-            58|62 => 60,
-            _ => unreachable!("invalid target square for castling")
+            2 | 6 => 4,
+            58 | 62 => 60,
+            _ => unreachable!("invalid target square for castling"),
         };
 
         Move {
@@ -925,7 +960,7 @@ impl Move {
             piece_moved: PieceKind::King,
             captured: None,
             promotion: None,
-            move_type: castling_side
+            move_type: castling_side,
         }
     }
 }

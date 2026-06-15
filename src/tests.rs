@@ -4,7 +4,7 @@ use crate::game_state::{self, *};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
-use std::time::{Instant};
+use std::time::Instant;
 
 fn perft(game_state: &mut GameState, depth: usize) -> usize {
     if depth == 0 {
@@ -14,7 +14,6 @@ fn perft(game_state: &mut GameState, depth: usize) -> usize {
     let moves = game_state.legal_moves();
 
     for move_to_make in moves {
-        
         game_state.make_move(move_to_make);
 
         nodes += perft(game_state, depth - 1);
@@ -37,7 +36,7 @@ pub fn perft_divide(fen: &str, depth: usize) -> (usize, usize, usize, usize) {
         game_state.make_move(m);
         let nodes = perft(&mut game_state, depth - 1);
         game_state.unmake_move();
-        
+
         my_counts.insert(move_name_str.clone(), nodes);
         my_total += nodes;
     }
@@ -57,18 +56,30 @@ pub fn perft_divide(fen: &str, depth: usize) -> (usize, usize, usize, usize) {
     // print comparisons
     for mv in moves {
         let my_nodes = my_counts.get(mv).cloned().unwrap_or(0);
-        let stockfish_nodes = if sf_counts.contains_key(mv) { sf_counts[mv] } else {0};
-        let indicator = if my_nodes == stockfish_nodes { "" } else { " - different" };
+        let stockfish_nodes = if sf_counts.contains_key(mv) {
+            sf_counts[mv]
+        } else {
+            0
+        };
+        let indicator = if my_nodes == stockfish_nodes {
+            ""
+        } else {
+            " - different"
+        };
         println!("{mv}: ({my_nodes}, {}){indicator}", stockfish_nodes);
     }
 
-    (my_total, sf_nodes, elapsed.as_millis() as usize, sf_elapsed.as_millis() as usize)
+    (
+        my_total,
+        sf_nodes,
+        elapsed.as_millis() as usize,
+        sf_elapsed.as_millis() as usize,
+    )
 }
 
 type StockfishPerft = std::io::Result<HashMap<String, usize>>;
 
 pub fn stockfish_perft(fen: &str, depth: u32) -> StockfishPerft {
-
     let mut engine = Command::new("stockfish")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -83,7 +94,7 @@ pub fn stockfish_perft(fen: &str, depth: u32) -> StockfishPerft {
         stdin.write_all(b"\n").unwrap();
         stdin.flush().unwrap();
     };
-    
+
     // 1. Initialize engine
     send("uci", &mut stdin);
 
@@ -94,7 +105,9 @@ pub fn stockfish_perft(fen: &str, depth: u32) -> StockfishPerft {
     loop {
         line.clear();
         reader.read_line(&mut line)?;
-        if line.trim() == "readyok" { break; }
+        if line.trim() == "readyok" {
+            break;
+        }
     }
 
     // 2. Start new game & set position
@@ -108,10 +121,11 @@ pub fn stockfish_perft(fen: &str, depth: u32) -> StockfishPerft {
     let mut perft_map = HashMap::new();
 
     loop {
-
         line.clear();
         let bytes_read = reader.read_line(&mut line)?;
-        if bytes_read == 0 { break; } // EOF
+        if bytes_read == 0 {
+            break;
+        } // EOF
         let l = line.trim();
 
         // parse move counts (format: e2e4: 20)
@@ -135,12 +149,17 @@ pub fn stockfish_perft(fen: &str, depth: u32) -> StockfishPerft {
 
 fn move_name(mv: Move) -> String {
     let mut name = String::new();
-    let (start_file, start_rank) = (((mv.start_square % 8)  as u8 + b'a') as char, ((mv.start_square / 8) as u8 + b'1') as char);
-    let (end_file, end_rank) = (((mv.end_square % 8) as u8 + b'a') as char, ((mv.end_square / 8) as u8 + b'1') as char);
+    let (start_file, start_rank) = (
+        ((mv.start_square % 8) as u8 + b'a') as char,
+        ((mv.start_square / 8) as u8 + b'1') as char,
+    );
+    let (end_file, end_rank) = (
+        ((mv.end_square % 8) as u8 + b'a') as char,
+        ((mv.end_square / 8) as u8 + b'1') as char,
+    );
 
     for character in [start_file, start_rank, end_file, end_rank] {
         name.push(character);
     }
     name
 }
-

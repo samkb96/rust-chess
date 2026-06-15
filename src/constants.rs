@@ -1,5 +1,5 @@
-use crate::mechanics::*;
 use crate::attack_masks::masks::*;
+use crate::mechanics::*;
 
 // fen strings for intialisation of position
 pub const INITIALISATION_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"; // at some point, rework the from_fen function to get rank order/colour right
@@ -8,8 +8,6 @@ pub const INITIALISATION_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBN
 
 pub const EN_PASSANT_TEST: &str = "6k1/8/8/K1Pp4/8/8/8/8 w - d6 0 1";
 pub const EN_PASSANT_CHECK_TEST: &str = "6k1/8/8/K1Pp3q/8/8/8/8 w - d6 0 1";
-
-
 
 // arrays for looping over pieces & colour
 pub const PIECE_ID_TO_FEN: [char; 6] = ['p', 'n', 'b', 'r', 'q', 'k'];
@@ -49,5 +47,3 @@ pub const CASTLING_SQUARES: ([[BitBoard; 2]; 2], [[BitBoard; 2]; 2]) = (
     // squares that can't be attacked for castling
     [[28, 112], [2017612633061982208, 8070450532247928832]],
 );
-
-

@@ -1,7 +1,7 @@
+use crate::constants::*;
 use crate::engine_handler::*;
 use crate::game_state::*;
 use crate::mechanics::*;
-use crate::constants::*;
 use macroquad::prelude::*;
 use std::collections::HashMap;
 
@@ -55,14 +55,16 @@ impl Board {
             }
         }
     }
-
-
-
 }
 
 // bot version
 impl Board {
-    pub fn draw_bot_game_to_screen(&self, game_state: &GameState, texture: &PieceTextures, font: &Font) {
+    pub fn draw_bot_game_to_screen(
+        &self,
+        game_state: &GameState,
+        texture: &PieceTextures,
+        font: &Font,
+    ) {
         self.draw_whole_board(font);
         self.last_move_highlights();
         self.draw_pieces(game_state, texture);
@@ -70,7 +72,7 @@ impl Board {
 
     pub fn update_bot_game(&self, game_state: &mut GameState, white_bot: &Bot, black_bot: &Bot) {
         let side_to_move = game_state.side_to_move;
-        
+
         let move_to_make = match side_to_move {
             PieceColour::White => white_bot.choose_move(game_state),
             PieceColour::Black => black_bot.choose_move(game_state),
@@ -79,17 +81,22 @@ impl Board {
         if let Some(valid_move) = move_to_make {
             game_state.make_move(valid_move)
         } else {
-            let end_result = game_state.game_is_over(&side_to_move, &game_state.legal_moves()).expect("No bot move found, despite no game over");
+            let end_result = game_state
+                .game_is_over(&side_to_move, &game_state.legal_moves())
+                .expect("No bot move found, despite no game over");
             dbg!(end_result);
-        }   
+        }
     }
 }
 
 // human input version
 impl Board {
-
-    pub fn draw_human_game_to_screen(&self, game_state: &GameState, texture: &PieceTextures, font: &Font) {
-
+    pub fn draw_human_game_to_screen(
+        &self,
+        game_state: &GameState,
+        texture: &PieceTextures,
+        font: &Font,
+    ) {
         self.draw_whole_board(font);
         self.legal_move_highlights();
         self.last_move_highlights();
@@ -132,23 +139,25 @@ impl Board {
         let file = target.file;
         match target.rank {
             0 => [
-                    BoardCoordinate { rank: 0, file },
-                    BoardCoordinate { rank: 1, file },
-                    BoardCoordinate { rank: 2, file },
-                    BoardCoordinate { rank: 3, file }
+                BoardCoordinate { rank: 0, file },
+                BoardCoordinate { rank: 1, file },
+                BoardCoordinate { rank: 2, file },
+                BoardCoordinate { rank: 3, file },
             ],
             7 => [
                 BoardCoordinate { rank: 4, file },
                 BoardCoordinate { rank: 5, file },
                 BoardCoordinate { rank: 6, file },
-                BoardCoordinate { rank: 7, file }
+                BoardCoordinate { rank: 7, file },
             ],
-            _ => unreachable!("Calling get_picker_squares when pawn isn't at final rank")
+            _ => unreachable!("Calling get_picker_squares when pawn isn't at final rank"),
         }
     }
 
     fn draw_promotion_picker(&self, texture: &PieceTextures, font: &Font) {
-        let Some(pending_promotion) = self.pending_promotion else { return; };
+        let Some(pending_promotion) = self.pending_promotion else {
+            return;
+        };
 
         let promoting_side = pending_promotion.piece.colour;
 
@@ -161,13 +170,15 @@ impl Board {
             board_top_left_pos.1,
             SQUARE_SIZE * 8.0,
             SQUARE_SIZE * 8.0,
-            DEEMPHASISED_COLOUR
+            DEEMPHASISED_COLOUR,
         );
 
         // re-draw a 4-square picker region emanating from the target square
 
         let picker_squares = Board::get_picker_squares(pending_promotion.target);
-        for i in 0..4 { picker_squares[i].draw_board_square(font) }
+        for i in 0..4 {
+            picker_squares[i].draw_board_square(font)
+        }
 
         // add textures for promotion choices to this picker region
 
@@ -180,10 +191,8 @@ impl Board {
         // rectangle's top left x is the same. y depends on the rank
         let picker_x = target_x;
         let picker_y = match pending_promotion.piece.colour {
-            PieceColour::White =>
-                target_y.max(Y_OFFSET),
-            PieceColour::Black =>
-                (target_y - SQUARE_SIZE * 3.0).min(Y_OFFSET + SQUARE_SIZE * 4.0)
+            PieceColour::White => target_y.max(Y_OFFSET),
+            PieceColour::Black => (target_y - SQUARE_SIZE * 3.0).min(Y_OFFSET + SQUARE_SIZE * 4.0),
         };
 
         // reorder choices depending on pawn colour, so queen is always at the edge
@@ -191,7 +200,7 @@ impl Board {
             PieceKind::Queen,
             PieceKind::Rook,
             PieceKind::Bishop,
-            PieceKind::Knight
+            PieceKind::Knight,
         ];
 
         if promoting_side == PieceColour::Black {
@@ -203,7 +212,7 @@ impl Board {
         for (index, &kind) in choices.iter().enumerate() {
             let piece = Piece {
                 kind,
-                colour: pending_promotion.piece.colour
+                colour: pending_promotion.piece.colour,
             };
 
             let y_pos_base = picker_y + index as f32 * SQUARE_SIZE;
@@ -222,53 +231,59 @@ impl Board {
                 WHITE,
                 DrawTextureParams {
                     ..Default::default()
-                }
+                },
             );
         }
     }
 
     fn promotion_choice_from_mouse_pos(&self, mouse_position: Vec2) -> Option<PieceKind> {
-
-        let pending_promotion = self.pending_promotion
-                .expect("No pending promotion in gamestate while handling picker, somehow");
+        let pending_promotion = self
+            .pending_promotion
+            .expect("No pending promotion in gamestate while handling picker, somehow");
 
         let side_to_promote = pending_promotion.piece.colour;
         let picker_file = pending_promotion.target.file;
 
-        let chosen_coordinate =
-            BoardCoordinate::mouse_pos_to_coordinate(mouse_position)?; // clicked off board
+        let chosen_coordinate = BoardCoordinate::mouse_pos_to_coordinate(mouse_position)?; // clicked off board
 
-        if chosen_coordinate.file != picker_file { return None }; // clicked outside picker file
+        if chosen_coordinate.file != picker_file {
+            return None;
+        }; // clicked outside picker file
 
         let piece_kind = match (side_to_promote, chosen_coordinate.rank) {
             (PieceColour::White, 7) | (PieceColour::Black, 0) => PieceKind::Queen,
             (PieceColour::White, 6) | (PieceColour::Black, 1) => PieceKind::Rook,
             (PieceColour::White, 5) | (PieceColour::Black, 2) => PieceKind::Bishop,
             (PieceColour::White, 4) | (PieceColour::Black, 3) => PieceKind::Knight,
-            _ => return None
+            _ => return None,
         };
 
         Some(piece_kind)
     }
 
     fn promotion_picker_handler(&mut self, game_state: &mut GameState, mouse_position: Vec2) {
-
         // don't return any selection until we click
-        if !is_mouse_button_pressed(MouseButton::Left) { return; }
+        if !is_mouse_button_pressed(MouseButton::Left) {
+            return;
+        }
 
         // if no promotion situation to handle, don't bother
-        let Some(pending_promotion) = self.pending_promotion else { return; };
+        let Some(pending_promotion) = self.pending_promotion else {
+            return;
+        };
 
         // get promotion choice from successful mouse click on picker, otherwise return;
-        let Some(choice_of_promotion_piece) =
-            self.promotion_choice_from_mouse_pos(mouse_position) else { return };
+        let Some(choice_of_promotion_piece) = self.promotion_choice_from_mouse_pos(mouse_position)
+        else {
+            return;
+        };
         println!("Piece chosen");
         let candidate_move = self.candidate_move(
             game_state,
             pending_promotion.origin,
             pending_promotion.target,
             pending_promotion.piece,
-            Some(choice_of_promotion_piece)
+            Some(choice_of_promotion_piece),
         );
 
         // move should already be legal, checked in is_legal_promotion_attempt()
@@ -278,7 +293,6 @@ impl Board {
         // TODO: add in single player stuff
 
         self.pending_promotion = None;
-
     }
 
     fn draw_piece_at_mouse_position(piece: &Piece, mouse_position: Vec2, textures: &PieceTextures) {
@@ -354,7 +368,12 @@ impl Board {
         }
     }
 
-    fn dragstate_handler_started(&mut self, mouse_position: Vec2, piece: Piece, origin: BoardCoordinate) {
+    fn dragstate_handler_started(
+        &mut self,
+        mouse_position: Vec2,
+        piece: Piece,
+        origin: BoardCoordinate,
+    ) {
         if is_mouse_button_down(MouseButton::Left) {
             // if piece is held, move into drag mode
             self.drag_state = DragState::Dragging { piece, origin };
@@ -383,11 +402,21 @@ impl Board {
 
             // separate control flow if we're pushing a pawn to the last rank
             // we check that promotion is legal here to avoid bringing up the picker
-            if self.is_legal_promotion_attempt(game_state, piece, origin, target, &relevant_legal_moves) {
+            if self.is_legal_promotion_attempt(
+                game_state,
+                piece,
+                origin,
+                target,
+                &relevant_legal_moves,
+            ) {
                 // set up pending promotion if this happens
                 // we initialise with piece = pawn
                 // this piece kind is then set to the actual promotion choice within the handler
-                self.pending_promotion = Some(PendingPromotion { origin, target, piece });
+                self.pending_promotion = Some(PendingPromotion {
+                    origin,
+                    target,
+                    piece,
+                });
 
                 // we're not dragging anymore; promotion picker is click-only
                 // clear dragstate and highlights
@@ -415,30 +444,31 @@ impl Board {
         piece: Piece,
         origin: BoardCoordinate,
         target: BoardCoordinate,
-        relevant_legal_moves: &Moves
+        relevant_legal_moves: &Moves,
     ) -> bool {
         // early return if we're not moving a pawn
 
-        if piece.kind != PieceKind::Pawn { return false; };
+        if piece.kind != PieceKind::Pawn {
+            return false;
+        };
 
         let piece_colour = piece.colour;
         let target_rank = target.rank;
 
         // return false for pawns of appropriate colour on inappropriate rank
-        if 7 * (1 - piece_colour as u8) != target_rank { return false; };
+        if 7 * (1 - piece_colour as u8) != target_rank {
+            return false;
+        };
 
         // passing all these checks means we are attempting to promote
         // just need to check for legality
 
-        let candidate_move = self.candidate_move(
-            game_state,
-            origin,
-            target,
-            piece,
-            Some(PieceKind::Queen)
-        );
+        let candidate_move =
+            self.candidate_move(game_state, origin, target, piece, Some(PieceKind::Queen));
 
-        if relevant_legal_moves.contains(&candidate_move) { return true };
+        if relevant_legal_moves.contains(&candidate_move) {
+            return true;
+        };
 
         unreachable!("Logic error in is_legal_promotion_attempt")
     }
@@ -449,7 +479,7 @@ impl Board {
         origin: BoardCoordinate,
         target: BoardCoordinate,
         piece: Piece,
-        promotion: Option<PieceKind> 
+        promotion: Option<PieceKind>,
     ) -> Move {
         let (start, end) = (origin.to_usize(), target.to_usize());
         // need to implement promotion choice
@@ -458,10 +488,11 @@ impl Board {
             .piece_at_square(end)
             .map(|piece| piece.kind);
 
-        let candidate_move_type = Self::generate_move_type(origin, target, piece, target_square_occupant);
+        let candidate_move_type =
+            Self::generate_move_type(origin, target, piece, target_square_occupant);
 
         if let Some(promotion_choice) = promotion {
-            return Move::promotion(start, end, promotion_choice, target_square_occupant)
+            return Move::promotion(start, end, promotion_choice, target_square_occupant);
         }
         match candidate_move_type {
             MoveType::Normal => {
@@ -470,7 +501,7 @@ impl Board {
                 } else {
                     Move::quiet(start, end, piece.kind)
                 }
-            },
+            }
             MoveType::EnPassant => Move::en_passant(start, end),
             MoveType::CastleKingside => Move::castling(end, MoveType::CastleKingside),
             MoveType::CastleQueenside => Move::castling(end, MoveType::CastleQueenside),
@@ -481,45 +512,47 @@ impl Board {
         origin: BoardCoordinate,
         target: BoardCoordinate,
         piece: Piece,
-        captured: Option<PieceKind>
+        captured: Option<PieceKind>,
     ) -> MoveType {
         let piece_kind = piece.kind as usize;
 
         if (1..=4).contains(&piece_kind) {
-            return MoveType::Normal // only pawns and kings get special moves
+            return MoveType::Normal; // only pawns and kings get special moves
         }
 
         match piece_kind {
             0 => {
-
                 // needs to be diagonal for en passant
-                let is_diagonal_move = [7, 9].contains(&origin.to_usize().abs_diff(target.to_usize()));
+                let is_diagonal_move =
+                    [7, 9].contains(&origin.to_usize().abs_diff(target.to_usize()));
                 if !is_diagonal_move {
-                    return MoveType::Normal
+                    return MoveType::Normal;
                 }
 
                 // landing square has to be empty for en passant
                 let is_empty_target = captured.is_none();
                 if !is_empty_target {
-                    return MoveType::Normal
+                    return MoveType::Normal;
                 }
 
                 MoveType::EnPassant
-            },
+            }
             5 => {
-
                 // two square movement indicates castling
                 let moved_two_squares = origin.file.abs_diff(target.file) == 2;
 
                 if !moved_two_squares {
-                    return MoveType::Normal
+                    return MoveType::Normal;
                 }
                 // direction gives side
                 let moved_rightward = origin.file < target.file;
-                if moved_rightward {MoveType::CastleKingside} else {MoveType::CastleQueenside}
-                
-            },
-            _ => unreachable!("handled this already")
+                if moved_rightward {
+                    MoveType::CastleKingside
+                } else {
+                    MoveType::CastleQueenside
+                }
+            }
+            _ => unreachable!("handled this already"),
         }
     }
 }
@@ -684,7 +717,7 @@ impl PieceTextures {
 struct PendingPromotion {
     origin: BoardCoordinate,
     target: BoardCoordinate,
-    piece: Piece
+    piece: Piece,
 }
 
 pub fn file_from_int(n: u8) -> Option<char> {

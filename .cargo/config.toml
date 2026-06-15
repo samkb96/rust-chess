@@ -1,2 +1,3 @@
 [alias]
 perft = "run --release --features perft"
+negamax_alpha = "run --release -- bvb negamax alphabeta"
