@@ -3,6 +3,7 @@ mod constants;
 mod engine_handler;
 mod evaluators;
 mod game;
+mod game_mode;
 mod game_state;
 mod mechanics;
 mod search_engines;
@@ -18,7 +19,8 @@ use std::env;
 const START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const MIDGAME_TEST: &str = "r1bqk2r/pp1p1ppp/2n1pn2/8/1bPPP3/2N2N2/PPQ2PPP/R1B1KB1R w KQkq - 1 8";
 
-#[cfg(not(feature = "perft"))]
+// gui mode for ordinary games played on board between a combination of humans and bots
+#[cfg(feature = "gui")]
 #[macroquad::main(window_conf)]
 async fn main() {
     let args: Vec<String> = env::args().collect();
@@ -37,8 +39,8 @@ async fn main() {
     }
 }
 
-// perft mode for debugging / performance testing; accessed with cargo perft
-#[cfg(feature = "perft")]
+// non-gui mode for performance testing and bot vs bot matches
+#[cfg(not(feature = "gui"))]
 fn main() {
     call_perft(MIDGAME_TEST, 4)
 }

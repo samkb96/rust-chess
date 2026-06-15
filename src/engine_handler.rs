@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use crate::evaluators::{NullEvaluator, PieceValues};
 use crate::search_engines::{AlphaBetaPruning, Negamax, RandomSearch};
+use crate::game_mode::GameModeError;
 
 pub type Evaluation = i32;
 
@@ -27,14 +28,8 @@ impl BotVersion {
     pub fn to_bot(&self) -> Bot {
         use BotVersion as BV;
         match self {
-            BV::Random => Bot {
-                search_engine: Box::new(RandomSearch),
-                evaluator: Box::new(NullEvaluator),
-            },
-            BV::Negamax => Bot {
-                search_engine: Box::new(Negamax { depth: 4 }),
-                evaluator: Box::new(PieceValues),
-            },
+            BV::Random => bot!(RandomSearch, NullEvaluator),
+            BV::Negamax => bot!(Negamax { depth: 4 }, PieceValues),
             BV::AlphaBeta => bot!(AlphaBetaPruning { depth: 4 }, PieceValues),
         }
     }
@@ -65,12 +60,12 @@ pub trait Evaluator: Send + Sync {
 }
 
 impl Bot {
-    pub fn create(argument: &str) -> Self {
+    pub fn create(argument: &str) -> Result< Self, GameModeError > {
         match argument {
-            "random" => BotVersion::Random.to_bot(),
-            "negamax" => BotVersion::Negamax.to_bot(),
-            "alphabeta" => BotVersion::AlphaBeta.to_bot(),
-            _ => panic!("Invalid bot selection"),
+            "random" => Ok(BotVersion::Random.to_bot()),
+            "negamax" => Ok(BotVersion::Negamax.to_bot()),
+            "alphabeta" => Ok(BotVersion::AlphaBeta.to_bot()),
+            _ => Err(GameModeError::InvalidBotSelection(argument.to_string()))
         }
     }
 
