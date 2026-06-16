@@ -82,7 +82,7 @@ impl Board {
             game_state.make_move(valid_move)
         } else {
             let end_result = game_state
-                .game_is_over(&side_to_move, &game_state.legal_moves())
+                .is_game_over(&side_to_move, &game_state.legal_moves())
                 .expect("No bot move found, despite no game over");
             dbg!(end_result);
         }
@@ -176,8 +176,8 @@ impl Board {
         // re-draw a 4-square picker region emanating from the target square
 
         let picker_squares = Board::get_picker_squares(pending_promotion.target);
-        for i in 0..4 {
-            picker_squares[i].draw_board_square(font)
+        for picker_square in picker_squares {
+            picker_square.draw_board_square(font)
         }
 
         // add textures for promotion choices to this picker region

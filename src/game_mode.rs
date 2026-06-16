@@ -1,28 +1,12 @@
 use crate::engine_handler::Bot;
-#[cfg(feature = "gui")]
 use crate::mechanics::PieceColour;
 use std::fmt;
+
 pub enum GameMode {
-    #[cfg(feature = "gui")]
-    HumanVsBot {
-        bot: Bot,
-        bot_colour: PieceColour,
-    },
-    #[cfg(feature = "gui")]
-    BotVsBot {
-        white: Bot,
-        black: Bot,
-    },
-    #[allow(dead_code)]
-    BotMatch {
-        white: Bot,
-        black: Bot,
-    },
-    #[allow(dead_code)]
-    Perft {
-        fen: String,
-        depth: usize,
-    },
+    HumanVsBot { bot: Bot, bot_colour: PieceColour }, // gui
+    BotVsBot { white: Bot, black: Bot },              // gui
+    BotArena { white: Bot, black: Bot },              // cli
+    Perft { fen: String, depth: usize },              // cli
 }
 
 #[derive(Debug)]
@@ -71,9 +55,9 @@ pub fn parse_args(args: &[String]) -> Result<GameMode, GameModeError> {
             let (white, black) = select_bots_from_args(args)?;
             Ok(GM::BotVsBot { white, black })
         }
-        "match" => {
+        "arena" => {
             let (white, black) = select_bots_from_args(args)?;
-            Ok(GM::BotMatch { white, black })
+            Ok(GM::BotArena { white, black })
         }
         "perft" => select_perft_from_args(args),
         _ => Err(GME::InvalidGameMode(args[1].to_string())),

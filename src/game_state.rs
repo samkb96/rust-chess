@@ -722,42 +722,58 @@ pub enum GameEnding {
 
 // game endings
 impl GameState {
-    pub fn game_is_over(
+    pub fn is_game_over(
         &self,
         side_to_move: &PieceColour,
         legal_moves: &Moves,
     ) -> Option<GameEnding> {
-        // first look for checkmate / stalemate
-        if legal_moves.is_empty() {
-            if self.pins_and_checkers.check_mask != !0 {
-                // no moves, and in check -> checkmate. win for 1 - side_to_move
-                match side_to_move {
-                    PieceColour::White => return Some(GameEnding::BlackWins),
-                    PieceColour::Black => return Some(GameEnding::WhiteWins),
-                }
-            } else {
-                // no moves, no check -> stalemate
-                return Some(GameEnding::Draw);
-            }
+        let exciting_endings = self.victory_or_stalemate(side_to_move, legal_moves);
+        if exciting_endings.is_some() {
+            return exciting_endings;
         }
 
-        // various draws
-
-        // halfmove rule
-        if self.halfmove_clock >= 50 {
-            return Some(GameEnding::Draw);
-        }
-
-        // insufficient material
         if self.draw_by_insufficient_material() {
             return Some(GameEnding::Draw);
         }
-
-        // TODO repetition. much easier with zobrist hashing
         if self.draw_by_threefold_repetition() {
             return Some(GameEnding::Draw);
         }
+        if self.draw_by_halfmove_clock() {
+            return Some(GameEnding::Draw);
+        }
+        if self.draw_by_stupidly_long_game() {
+            return Some(GameEnding::Draw);
+        }
+
         None
+    }
+
+    fn victory_or_stalemate(
+        &self,
+        side_to_move: &PieceColour,
+        legal_moves: &Moves,
+    ) -> Option<GameEnding> {
+        if !legal_moves.is_empty() {
+            return None;
+        };
+
+        if self.pins_and_checkers.check_mask == !0 {
+            Some(GameEnding::Draw) // stalemate
+        } else {
+            match side_to_move {
+                PieceColour::White => Some(GameEnding::WhiteWins),
+                PieceColour::Black => Some(GameEnding::BlackWins),
+            }
+        }
+    }
+
+    fn draw_by_stupidly_long_game(&self) -> bool {
+        // TODO not a real rule but worth preventing glitched loops
+        self.fullmove_number >= 200
+    }
+
+    fn draw_by_halfmove_clock(&self) -> bool {
+        self.halfmove_clock >= 50
     }
 
     fn draw_by_insufficient_material(&self) -> bool {

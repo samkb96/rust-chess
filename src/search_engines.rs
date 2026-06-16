@@ -1,7 +1,7 @@
 use crate::engine_handler::{Evaluation, Evaluator, SearchData, SearchEngine};
-use crate::game_state::*;
+use crate::game_state::*; // TODO narrow this
 use crate::mechanics::PieceColour;
-use rand::prelude::*;
+use rand::prelude::*; // can probably dump the random bot
 use std::ops::Neg;
 use std::thread;
 
@@ -123,7 +123,7 @@ impl SearchEngine for AlphaBetaPruning {
         let mut best_move: Option<Move> = None;
 
         let mut alpha: Evaluation = i32::MIN + 1;
-        let mut beta: Evaluation = i32::MAX - 1;
+        let beta: Evaluation = i32::MAX - 1;
 
         for mv in legal_moves {
             search_state.make_move(mv);
@@ -163,7 +163,7 @@ impl AlphaBetaPruning {
         search_data: &mut SearchData,
         evaluator: &dyn Evaluator,
         mut alpha: Evaluation,
-        mut beta: Evaluation,
+        beta: Evaluation,
     ) -> Evaluation {
         if depth == 0 {
             return evaluator.evaluate(side_to_move, search_state, search_data);
@@ -198,7 +198,6 @@ impl AlphaBetaPruning {
             }
             alpha = alpha.max(best_score);
         }
-
         best_score
     }
 }
@@ -210,7 +209,7 @@ fn evaluate_end_of_game(
     legal_moves: &Moves,
     side_to_move: &PieceColour,
 ) -> Option<Evaluation> {
-    if let Some(game_ending) = search_state.game_is_over(side_to_move, legal_moves) {
+    if let Some(game_ending) = search_state.is_game_over(side_to_move, legal_moves) {
         use GameEnding as GE;
         use PieceColour as PC;
         match (side_to_move, game_ending) {

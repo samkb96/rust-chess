@@ -7,7 +7,17 @@ edition = "2024"
 macroquad = { version = "0.4.14", optional = true }
 arrayvec = "0.7"
 rand = "0.9.2"
+libm = "0.2"
 
 [features]
 default = ["gui"]
 gui = ["macroquad"]
+
+[[bin]]
+name = "gui"
+path = "src/bin/gui.rs"
+required-features = ["gui"]
+
+[[bin]]
+name = "cli"
+path = "src/bin/cli.rs"

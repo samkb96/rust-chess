@@ -1,3 +1,7 @@
 [alias]
-perft = "run --release --features perft"
-negamax_alpha = "run --release -- bvb negamax alphabeta"
+chess = """sh -c '''
+case "$1" in
+  human|bvb) cargo run --features gui --release -- "$@" ;;
+  *) cargo run --release -- "$@" ;;
+esac
+''' --"""

@@ -1,9 +1,33 @@
-#![allow(dead_code)] // stop linter complaining these are only used in a non-default cfg feature
 use crate::game_state::*; // TODO narrow this import down
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 use std::time::Instant;
+
+pub fn call_perft(fen: &str, depth: usize) {
+    // TODO implement a fen subtype of &str at some point with impl fn validity_check
+    // 1 king a side, no pawns on final ranks, etc
+
+    let (total_positions, stockfish_positions, total_time_ms, sf_time_ms) =
+        perft_divide(fen, depth);
+
+    let nps = if total_time_ms > 0 {
+        total_positions / total_time_ms
+    } else {
+        0
+    };
+    let sf_nps = if sf_time_ms > 0 {
+        stockfish_positions / sf_time_ms
+    } else {
+        0
+    };
+    println!("\n\n-------------------RESULTS-------------------\n\n");
+    println!(
+        "Total positions up to depth {depth} is {total_positions}. Stockfish: {stockfish_positions}"
+    );
+    println!("Time taken: {total_time_ms}ms. Stockfish: {sf_time_ms}ms.");
+    println!("Nodes per millisecond: {nps}. Stockfish: {sf_nps}.");
+}
 
 fn perft(game_state: &mut GameState, depth: usize) -> usize {
     if depth == 0 {
@@ -21,7 +45,7 @@ fn perft(game_state: &mut GameState, depth: usize) -> usize {
     nodes
 }
 
-pub fn perft_divide(fen: &str, depth: usize) -> (usize, usize, usize, usize) {
+fn perft_divide(fen: &str, depth: usize) -> (usize, usize, usize, usize) {
     let mut game_state = GameState::from_fen(fen);
     let first_moves = game_state.legal_moves();
 

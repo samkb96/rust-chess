@@ -29,8 +29,8 @@ impl BotVersion {
         use BotVersion as BV;
         match self {
             BV::Random => bot!(RandomSearch, NullEvaluator),
-            BV::Negamax => bot!(Negamax { depth: 4 }, PieceValues),
-            BV::AlphaBeta => bot!(AlphaBetaPruning { depth: 4 }, PieceValues),
+            BV::Negamax => bot!(Negamax { depth: 3 }, PieceValues),
+            BV::AlphaBeta => bot!(AlphaBetaPruning { depth: 3 }, PieceValues),
         }
     }
 }
@@ -70,7 +70,7 @@ impl Bot {
     }
 
     pub fn choose_move(&self, game_state: &mut GameState) -> Option<Move> {
-        let mut search_data = SearchData::new();
+        let mut search_data = SearchData::default();
         let search_start_time = Instant::now();
         // remove the clone once it's all working
         let mut search_state = game_state.clone();
@@ -82,7 +82,6 @@ impl Bot {
             &*self.evaluator,
         ) {
             search_data.time_taken = search_start_time.elapsed();
-            search_data.log_search_results();
             return Some(move_choice);
         }
 
@@ -90,6 +89,7 @@ impl Bot {
     }
 }
 
+#[derive(Default)]
 pub struct SearchData {
     pub current_eval: i32,
     pub nodes_evaluated: u64,
@@ -97,14 +97,6 @@ pub struct SearchData {
 }
 
 impl SearchData {
-    pub fn new() -> Self {
-        SearchData {
-            current_eval: 0,
-            nodes_evaluated: 0,
-            time_taken: Duration::new(0, 0),
-        }
-    }
-
     fn nps(&self) -> u64 {
         if self.time_taken.as_millis() == 0 {
             return 0u64;
