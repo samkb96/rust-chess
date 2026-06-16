@@ -44,30 +44,32 @@ impl fmt::Display for GameModeError {
 }
 
 pub fn parse_args(args: &[String]) -> Result<GameMode, GameModeError> {
-    use GameModeError as GME;
+    use GameMode as M;
+    use GameModeError as E;
+
     if args.len() < 2 {
-        return Err(GME::MissingArgument("game mode".to_string()));
+        return Err(E::MissingArgument("game mode".to_string()));
     }
-    use GameMode as GM;
+
     match args[1].as_str() {
         "human" => select_bot_and_colour_from_args(args),
         "bvb" => {
             let (white, black) = select_bots_from_args(args)?;
-            Ok(GM::BotVsBot { white, black })
+            Ok(M::BotVsBot { white, black })
         }
         "arena" => {
             let (white, black) = select_bots_from_args(args)?;
-            Ok(GM::BotArena { white, black })
+            Ok(M::BotArena { white, black })
         }
         "perft" => select_perft_from_args(args),
-        _ => Err(GME::InvalidGameMode(args[1].to_string())),
+        _ => Err(E::InvalidGameMode(args[1].to_string())),
     }
 }
 
 fn select_bot_and_colour_from_args(args: &[String]) -> Result<GameMode, GameModeError> {
-    use GameModeError as GME;
+    use GameModeError as E;
     if args.len() < 3 {
-        return Err(GME::InvalidBotSelection("".to_string()));
+        return Err(E::InvalidBotSelection("".to_string()));
     }
 
     // let the bot play black if colour argument provided
@@ -82,7 +84,7 @@ fn select_bot_and_colour_from_args(args: &[String]) -> Result<GameMode, GameMode
             }
             "black" => (),
             _ => {
-                return Err(GME::InvalidArgumentValue {
+                return Err(E::InvalidArgumentValue {
                     arg: args[3].clone(),
                     expected: "bot colour".to_string(),
                 });
@@ -94,8 +96,6 @@ fn select_bot_and_colour_from_args(args: &[String]) -> Result<GameMode, GameMode
 }
 
 fn select_perft_from_args(args: &[String]) -> Result<GameMode, GameModeError> {
-    // TODO fix this
-    //"b3k3/P7/8/8/8/8/1p6/3NKB2 w - - 0 1"
     use GameModeError as GME;
 
     if args.len() < 8 {

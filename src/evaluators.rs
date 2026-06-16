@@ -12,7 +12,6 @@ pub struct PieceSquareTables;
 impl Evaluator for NullEvaluator {
     fn evaluate(
         &self,
-        _side_to_move: &PieceColour,
         _search_state: &GameState,
         _search_data: &mut SearchData,
     ) -> Evaluation {
@@ -25,13 +24,12 @@ impl Evaluator for NullEvaluator {
 impl Evaluator for PieceValues {
     fn evaluate(
         &self,
-        side_to_move: &PieceColour,
         search_state: &GameState,
         _search_data: &mut SearchData,
     ) -> Evaluation {
         let eval = piece_values(search_state);
 
-        match side_to_move {
+        match search_state.side_to_move {
             PieceColour::White => eval,
             PieceColour::Black => -eval,
         }
@@ -60,7 +58,6 @@ const PIECE_VALUES: [Evaluation; 5] = [100, 300, 301, 500, 900];
 impl Evaluator for PieceSquareTables {
     fn evaluate(
         &self,
-        side_to_move: &PieceColour,
         search_state: &GameState,
         _search_data: &mut SearchData,
     ) -> Evaluation {
@@ -68,7 +65,7 @@ impl Evaluator for PieceSquareTables {
         let piece_square_eval = get_piece_square_evals(search_state);
         let eval = piece_value_eval + piece_square_eval;
 
-        match side_to_move {
+        match search_state.side_to_move {
             PieceColour::White => eval,
             PieceColour::Black => -eval,
         }

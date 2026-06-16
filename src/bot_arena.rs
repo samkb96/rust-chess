@@ -31,11 +31,11 @@ impl Display for ArenaResult {
 
         let arena_winner = match (first_bot_wins - second_bot_wins).cmp(&0) {
             Ordering::Greater => "First bot",
-            Ordering::Equal => "Drawn",
+            Ordering::Equal => "Neither",
             Ordering::Less => "Second bot",
         };
 
-        // significance testing: calc likelihood that results would come from match between two players of same ELO
+        // significance testing
         let los = if first_bot_wins + second_bot_wins == 0 {
             0.5
         } else {
@@ -69,14 +69,16 @@ pub fn bot_arena(white: &Bot, black: &Bot) {
     println!("Commencing arena");
 
     for (idx, position_fen) in TEST_POSITIONS_SUITE.iter().enumerate() {
-        if idx % 20 == 0 && idx > 0 {
+        if idx > 0 {
             println!("{arena_result}")
         }
 
-        println!("Game {}", idx + 1);
-
         for game_orientation in [O::FirstAsWhite, O::FirstAsBlack] {
-            let game_result = play_bot_game(position_fen, white, black);
+            let game_result = match game_orientation {
+                O::FirstAsWhite => play_bot_game(position_fen, white, black),
+                O::FirstAsBlack => play_bot_game(position_fen, black, white)
+            
+            };
             arena_result.record(game_result, game_orientation);
         }
     }
@@ -109,7 +111,7 @@ fn make_move_and_check_for_game_over(game_state: &mut GameState, bot: &Bot) -> O
 
     let legal_moves = game_state.legal_moves();
 
-    game_state.is_game_over(&game_state.side_to_move, &legal_moves)
+    game_state.is_game_over(&legal_moves)
 }
 
 enum GameOrientation {

@@ -4,13 +4,15 @@ use crate::game_state::*;
 use crate::mechanics::*;
 use macroquad::prelude::*;
 use std::collections::HashMap;
+use std::thread::sleep;
+use std::time::Duration;
 
-pub const WINDOW_WIDTH: f32 = SQUARE_SIZE * 14.;
-pub const WINDOW_HEIGHT: f32 = SQUARE_SIZE * 9.5;
+pub const WINDOW_WIDTH: f32 = SQUARE_SIZE * 9.;
+pub const WINDOW_HEIGHT: f32 = SQUARE_SIZE * 9.;
 const SQUARE_SIZE: f32 = 100.;
 
-const X_OFFSET: f32 = 440.;
-const Y_OFFSET: f32 = 120.;
+const X_OFFSET: f32 = 50.;
+const Y_OFFSET: f32 = 50.;
 
 const DARK_COLOUR: Color = color_u8!(167, 128, 99, 255);
 const LIGHT_COLOUR: Color = color_u8!(238, 238, 210, 255);
@@ -82,9 +84,11 @@ impl Board {
             game_state.make_move(valid_move)
         } else {
             let end_result = game_state
-                .is_game_over(&side_to_move, &game_state.legal_moves())
+                .is_game_over(&game_state.legal_moves())
                 .expect("No bot move found, despite no game over");
             dbg!(end_result);
+            sleep(Duration::new(10, 0));
+            panic!("Closing game");
         }
     }
 }
@@ -751,9 +755,9 @@ pub fn draw_framerate(font: &Font) {
 pub fn window_conf() -> Conf {
     Conf {
         window_title: "Chess".to_string(),
-        window_width: 800,
-        window_height: 800,
-        fullscreen: true,
+        window_width: WINDOW_WIDTH as i32,
+        window_height: WINDOW_HEIGHT as i32,
+        fullscreen: false,
         ..Default::default()
     }
 }

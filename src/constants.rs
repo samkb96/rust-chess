@@ -2,8 +2,11 @@ use crate::attack_masks::masks::*;
 use crate::mechanics::*;
 
 // fen strings for intialisation of position
+pub mod fen_positions {
 pub const START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-
+pub const QGD_MIDGAME: &str = "rnbqkb1r/ppp2ppp/5n2/3pp3/2PP4/2N5/PPP2PPP/R1BQKBNR w KQkq - 1 4";
+pub const MATE_IN_FOUR: &str = "6k1/5ppp/8/4Q3/8/1B6/4K3/8 w - - 0 1";
+}
 // arrays for looping over pieces & colour
 pub const PIECE_ID_TO_FEN: [char; 6] = ['p', 'n', 'b', 'r', 'q', 'k'];
 pub const PIECE_KINDS: [PieceKind; 6] = [
@@ -58,7 +61,7 @@ pub mod psts {
 
             0,   0,   0,   0,   0,   0,   0,   0,
 
-            0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   5,   5,   0,   0,   0,
 
             0,   0,   5,   10,  10,  5,   0,   0,
 
@@ -79,7 +82,7 @@ pub mod psts {
 
             0,   0,   5,   10,  10,  5,   0,   0,
 
-            0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   5,   5,   0,   0,   0,
 
             0,   0,   0,   0,   0,   0,   0,   0,
 
@@ -90,7 +93,7 @@ pub mod psts {
     ];
 
     pub const KNIGHT_PST: Pst = [
-        -20,  -10,  -10,  -5,  -5,  -10, -10,  -20,
+        -20,  -10,  -10, -5,   -5,  -10, -10,  -20,
 
         -10,   0,    5,   10,   10,  5,   0,   -10,
 
@@ -126,14 +129,22 @@ pub mod psts {
     ];
 
     pub const ROOK_PST: Pst = [
-        0, 0, 0, 5, 5, 0, 0, 0,
-        5, 5, 5, 5, 5, 5, 5, 5,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        5, 5, 5, 5, 5, 5, 5, 5,
-        0, 0, 0, 5, 5, 0, 0, 0,
+        0,   0,   0,   5,   5,   0,   0,   0,
+
+        5,   5,   5,   5,   5,   5,   5,   5,
+
+        0,   0,   0,   0,   0,   0,   0,   0,
+
+        0,   0,   0,   0,   0,   0,   0,   0,
+
+        0,   0,   0,   0,   0,   0,   0,   0,
+
+        0,   0,   0,   0,   0,   0,   0,   0,
+
+        5,   5,   5,   5,   5,   5,   5,   5,
+
+        0,   0,   0,   5,   5,   0,   0,   0,
+
     ];
 
     pub const QUEEN_PST: Pst = [
@@ -157,7 +168,7 @@ pub mod psts {
     pub const KING_PST: Pst = [
         20,  30,  10,  0,   0,   10,  30,  20,
 
-        20,  20,  0,   0,   0,   0,   20,  20,
+        20,  20,  0,  -10, -10,  0,   20,  20,
 
        -10, -20, -30, -30, -30, -30, -20, -10,
 

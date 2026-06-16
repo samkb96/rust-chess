@@ -435,6 +435,16 @@ impl TryFrom<usize> for PieceKind {
     }
 }
 
+impl PieceColour {
+    pub fn flip(self) -> Self {
+        if self == PieceColour::White {
+            PieceColour::Black
+        } else {
+            PieceColour::White
+        }
+    }
+}
+
 impl Piece {
     pub fn new(piece_colour: PieceColour, piece_kind: PieceKind) -> Self {
         Piece {

@@ -724,10 +724,9 @@ pub enum GameEnding {
 impl GameState {
     pub fn is_game_over(
         &self,
-        side_to_move: &PieceColour,
         legal_moves: &Moves,
     ) -> Option<GameEnding> {
-        let exciting_endings = self.victory_or_stalemate(side_to_move, legal_moves);
+        let exciting_endings = self.victory_or_stalemate(legal_moves);
         if exciting_endings.is_some() {
             return exciting_endings;
         }
@@ -750,7 +749,6 @@ impl GameState {
 
     fn victory_or_stalemate(
         &self,
-        side_to_move: &PieceColour,
         legal_moves: &Moves,
     ) -> Option<GameEnding> {
         if !legal_moves.is_empty() {
@@ -760,9 +758,9 @@ impl GameState {
         if self.pins_and_checkers.check_mask == !0 {
             Some(GameEnding::Draw) // stalemate
         } else {
-            match side_to_move {
-                PieceColour::White => Some(GameEnding::WhiteWins),
-                PieceColour::Black => Some(GameEnding::BlackWins),
+            match self.side_to_move {
+                PieceColour::White => Some(GameEnding::BlackWins),
+                PieceColour::Black => Some(GameEnding::WhiteWins),
             }
         }
     }
