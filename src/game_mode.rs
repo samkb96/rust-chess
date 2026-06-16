@@ -1,17 +1,24 @@
 use crate::engine_handler::Bot;
+#[cfg(feature = "gui")]
+use crate::mechanics::PieceColour;
 use std::fmt;
 pub enum GameMode {
     #[cfg(feature = "gui")]
-    HumanVsBot, // TODO configurable bot opponent
+    HumanVsBot {
+        bot: Bot,
+        bot_colour: PieceColour,
+    },
     #[cfg(feature = "gui")]
     BotVsBot {
         white: Bot,
         black: Bot,
     },
+    #[allow(dead_code)]
     BotMatch {
         white: Bot,
         black: Bot,
     },
+    #[allow(dead_code)]
     Perft {
         fen: String,
         depth: usize,
@@ -22,7 +29,7 @@ pub enum GameMode {
 pub enum GameModeError {
     InvalidBotSelection(String),
     InvalidGameMode(String),
-    MissingArgument(String), 
+    MissingArgument(String),
     InvalidArgumentValue { arg: String, expected: String },
 }
 
@@ -31,16 +38,22 @@ impl fmt::Display for GameModeError {
         use GameModeError as GME;
         match self {
             GME::InvalidBotSelection(bot) => {
-                write!(f, "Invalid bot selection: '{}'. Use: random, negamax, alphabeta", bot)   
-            },
+                write!(
+                    f,
+                    "Invalid bot selection: '{bot}'. Use: random, negamax, alphabeta"
+                )
+            }
             GME::InvalidGameMode(mode) => {
-                write!(f, "Invalid mode selection: '{}'. Use: human, bvb, match, perft", mode)
-            },
+                write!(
+                    f,
+                    "Invalid mode selection: '{mode}'. Use: human, bvb, match, perft"
+                )
+            }
             GME::MissingArgument(arg) => {
-                write!(f, "Missing required argument: '{}'", arg)   
-            },
-            GME::InvalidArgumentValue{ arg, expected} => {
-                write!(f, "Invalid argument for '{}': '{}'", expected, arg)   
+                write!(f, "Missing required argument: '{arg}'")
+            }
+            GME::InvalidArgumentValue { arg, expected } => {
+                write!(f, "Invalid argument for '{expected}': '{arg}'")
             }
         }
     }
@@ -48,11 +61,12 @@ impl fmt::Display for GameModeError {
 
 pub fn parse_args(args: &[String]) -> Result<GameMode, GameModeError> {
     use GameModeError as GME;
-    if args.len() < 2 { return Err(GME::MissingArgument("game mode".to_string())) }
+    if args.len() < 2 {
+        return Err(GME::MissingArgument("game mode".to_string()));
+    }
     use GameMode as GM;
     match args[1].as_str() {
-        "human" => 
-            Ok(GM::HumanVsBot),
+        "human" => select_bot_and_colour_from_args(args),
         "bvb" => {
             let (white, black) = select_bots_from_args(args)?;
             Ok(GM::BotVsBot { white, black })
@@ -61,29 +75,58 @@ pub fn parse_args(args: &[String]) -> Result<GameMode, GameModeError> {
             let (white, black) = select_bots_from_args(args)?;
             Ok(GM::BotMatch { white, black })
         }
-        "perft" => {
-            select_perft_from_args(args)
-        }
-        _ => 
-            Err(GME::InvalidGameMode(args[1].to_string()))
+        "perft" => select_perft_from_args(args),
+        _ => Err(GME::InvalidGameMode(args[1].to_string())),
     }
+}
+
+fn select_bot_and_colour_from_args(args: &[String]) -> Result<GameMode, GameModeError> {
+    use GameModeError as GME;
+    if args.len() < 3 {
+        return Err(GME::InvalidBotSelection("".to_string()));
+    }
+
+    // let the bot play black if colour argument provided
+    let bot = Bot::create(args[2].as_str())?; // propagate invalid bot selection error
+
+    let mut bot_colour = PieceColour::Black;
+
+    if args.len() >= 4 {
+        match args[3].as_ref() {
+            "white" => {
+                bot_colour = PieceColour::White;
+            }
+            "black" => (),
+            _ => {
+                return Err(GME::InvalidArgumentValue {
+                    arg: args[3].clone(),
+                    expected: "bot colour".to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(GameMode::HumanVsBot { bot, bot_colour })
 }
 
 fn select_perft_from_args(args: &[String]) -> Result<GameMode, GameModeError> {
     use GameModeError as GME;
-    if args.len() < 3 { 
-        return Err(GME::MissingArgument("perft fen".to_string()))
-    } 
+    if args.len() < 3 {
+        return Err(GME::MissingArgument("perft fen".to_string()));
+    }
     if args.len() == 3 {
-        return Err(GME::MissingArgument("search depth".to_string()))
+        return Err(GME::MissingArgument("search depth".to_string()));
     }
 
     let fen = args[3].clone();
-    if let Ok(depth) = args[4].parse::<usize>() { 
-        return Ok(GameMode::Perft{ fen, depth }) 
-    } else {
-        return Err(GME::InvalidArgumentValue { arg: (args[4].to_string()), expected: "usize".to_string() }) 
+    if let Ok(depth) = args[4].parse::<usize>() {
+        return Ok(GameMode::Perft { fen, depth });
     }
+
+    Err(GME::InvalidArgumentValue {
+        arg: (args[4].to_string()),
+        expected: "usize".to_string(),
+    })
 }
 
 fn select_bots_from_args(args: &[String]) -> Result<(Bot, Bot), GameModeError> {
@@ -92,7 +135,7 @@ fn select_bots_from_args(args: &[String]) -> Result<(Bot, Bot), GameModeError> {
         return Err(GME::InvalidBotSelection("".to_string()));
     }
 
-    let white = Bot::create(args[2].as_str())?;
+    let white = Bot::create(args[2].as_str())?; // propagate invalid bot selection error
     let black = Bot::create(args[3].as_str())?;
 
     Ok((white, black))

@@ -45,14 +45,6 @@ pub struct CastlingRights {
     pub black_kingside: bool,
     pub black_queenside: bool,
 }
-impl CastlingRights {
-    pub fn to_u8(self) -> u8 {
-        (self.white_kingside as u8)
-            | (self.white_queenside as u8) << 1
-            | (self.black_kingside as u8) << 2
-            | (self.black_queenside as u8) << 3
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct PinsAndCheckers {
@@ -80,6 +72,8 @@ impl BitBoards {
     }
 
     pub fn get_pins_and_checks(&self, side_to_move: PieceColour) -> PinsAndCheckers {
+        // TODO unravel crazy nesting. Very difficult to see what's going on
+
         // side to move should be the side with the king which may be in check / pieces which may be pinned
 
         let pinning_side = 1 - side_to_move as usize;

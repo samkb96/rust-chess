@@ -808,7 +808,7 @@ pub const NORTHWEST_RAY: [BitBoard; 64] = [
 
 // inclusive partial masks
 
-pub const MASK_UP_TO_INCLUSIVE: [[BitBoard; 64]; 64] = [
+pub static MASK_UP_TO_INCLUSIVE: [[BitBoard; 64]; 64] = [
     [
         0,
         2,
@@ -5037,7 +5037,7 @@ pub const MASK_UP_TO_INCLUSIVE: [[BitBoard; 64]; 64] = [
 
 // exclusive partial masks
 
-pub const MASK_UP_TO_EXCLUSIVE: [[BitBoard; 64]; 64] = [
+pub static MASK_UP_TO_EXCLUSIVE: [[BitBoard; 64]; 64] = [
     [
         0,
         0,

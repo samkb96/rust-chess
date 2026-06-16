@@ -1,7 +1,6 @@
-use crate::engine_handler::{Bot, Evaluation, Evaluator, SearchData, SearchEngine};
+use crate::engine_handler::{Evaluation, Evaluator, SearchData};
 use crate::game_state::*;
 use crate::mechanics::PieceColour;
-use std::time::Instant;
 
 pub struct NullEvaluator;
 pub struct PieceValues;

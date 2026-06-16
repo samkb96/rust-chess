@@ -1,6 +1,5 @@
-use arrayvec::ArrayString;
-
-use crate::game_state::{self, *};
+#![allow(dead_code)] // stop linter complaining these are only used in a non-default cfg feature
+use crate::game_state::*; // TODO narrow this import down
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
@@ -66,7 +65,7 @@ pub fn perft_divide(fen: &str, depth: usize) -> (usize, usize, usize, usize) {
         } else {
             " - different"
         };
-        println!("{mv}: ({my_nodes}, {}){indicator}", stockfish_nodes);
+        println!("{mv}: ({my_nodes}, {stockfish_nodes}){indicator}");
     }
 
     (
@@ -112,10 +111,10 @@ pub fn stockfish_perft(fen: &str, depth: u32) -> StockfishPerft {
 
     // 2. Start new game & set position
     send("ucinewgame", &mut stdin);
-    send(&format!("position fen {}", fen), &mut stdin);
+    send(&format!("position fen {fen}"), &mut stdin);
 
     // 3. Run perft
-    send(&format!("go perft {}", depth), &mut stdin);
+    send(&format!("go perft {depth}"), &mut stdin);
 
     // 4. Read output
     let mut perft_map = HashMap::new();

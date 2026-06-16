@@ -4,8 +4,8 @@ use macroquad::prelude::*;
 use std::time::{Duration, Instant};
 
 use crate::evaluators::{NullEvaluator, PieceValues};
-use crate::search_engines::{AlphaBetaPruning, Negamax, RandomSearch};
 use crate::game_mode::GameModeError;
+use crate::search_engines::{AlphaBetaPruning, Negamax, RandomSearch};
 
 pub type Evaluation = i32;
 
@@ -60,12 +60,12 @@ pub trait Evaluator: Send + Sync {
 }
 
 impl Bot {
-    pub fn create(argument: &str) -> Result< Self, GameModeError > {
+    pub fn create(argument: &str) -> Result<Self, GameModeError> {
         match argument {
             "random" => Ok(BotVersion::Random.to_bot()),
             "negamax" => Ok(BotVersion::Negamax.to_bot()),
             "alphabeta" => Ok(BotVersion::AlphaBeta.to_bot()),
-            _ => Err(GameModeError::InvalidBotSelection(argument.to_string()))
+            _ => Err(GameModeError::InvalidBotSelection(argument.to_string())),
         }
     }
 

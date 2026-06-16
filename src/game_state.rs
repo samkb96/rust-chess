@@ -1,10 +1,8 @@
 use crate::attack_masks::masks::*;
 use crate::constants::*;
-use crate::game::*;
 use crate::mechanics::*;
-use arrayvec::{ArrayString, ArrayVec};
+use arrayvec::ArrayVec;
 use macroquad::prelude::*;
-use std::io::*;
 
 #[derive(Clone)]
 pub struct GameState {
@@ -106,10 +104,6 @@ impl GameState {
             fullmove_number,
             previous_state: vec![],
         }
-    }
-
-    pub fn initialise() -> Self {
-        Self::from_fen(INITIALISATION_FEN)
     }
 
     pub fn make_move(&mut self, move_to_make: Move) {
@@ -333,32 +327,6 @@ impl GameState {
         // recalculate pins and checks
         self.pins_and_checkers = self.bitboards.get_pins_and_checks(self.side_to_move);
     }
-
-    pub fn naive_hash(&self) -> u128 {
-        let mut h = 0u128;
-        for colour in 0..2 {
-            for piece in 0..6 {
-                h ^= (self.bitboards.pieces[colour][piece] as u128) << (piece * colour);
-            }
-        }
-        h ^= (self.castling_rights.to_u8() as u128) << 64;
-        h ^= self.en_passant_square.unwrap_or(0) as u128;
-        h ^= (self.side_to_move as u128) << 37;
-        h
-    }
-}
-
-fn format_movestring(mv: Move) -> String {
-    let start_str = BoardCoordinate::from_usize(mv.start_square).square_name();
-    let end_str = BoardCoordinate::from_usize(mv.end_square).square_name();
-    let pieces = ["Pawn", "Knight", "Bishop", "Rook", "Queen", "King"];
-    let piece_str = pieces[mv.piece_moved as usize];
-    let captured_str = if let Some(captured_piece) = mv.captured {
-        pieces[captured_piece as usize]
-    } else {
-        "None"
-    };
-    format!("Move: {start_str}{end_str}. Piece moved: {piece_str}. Captured: {captured_str}")
 }
 
 // piece move generators
@@ -453,11 +421,8 @@ impl GameState {
                     // need a function for that stupid edge case
                     if (1u64 << end & en_passant_square) != 0 {
                         // is the end square the EP square
-                        if !end_square_illegal {
-                            if !self.en_passant_double_pin_situation(start) {
-                                // rule out edge case
-                                moves.push(Move::en_passant(start, end));
-                            }
+                        if !end_square_illegal && !self.en_passant_double_pin_situation(start) {
+                            moves.push(Move::en_passant(start, end));
                         }
                         if self.en_passant_capture_of_a_checking_pawn(start) {
                             // this illegal move isn't actually illegal
@@ -501,7 +466,7 @@ impl GameState {
         }
 
         // if it's passed all these tests, then EP capture of checking pawn should be legal
-        return true;
+        true
     }
 
     fn en_passant_double_pin_situation(&self, start: usize) -> bool {
@@ -509,7 +474,7 @@ impl GameState {
         let opposing_side = 1 - side_to_move;
         let start_rank = start / 8;
 
-        let rank_bitboard = (255u64 << 8 * start_rank) as BitBoard; // 255 is rank 0
+        let rank_bitboard = 255u64 << (8 * start_rank) as BitBoard; // 255 is rank 0
 
         // are we on same rank as our king
         let king_bitboard = self.bitboards.pieces[side_to_move][5];
@@ -544,8 +509,7 @@ impl GameState {
                 return true; // somehow, it's that incredibly rare situation
             }
         }
-
-        return false;
+        false
     }
 
     fn knight_moves(&self, piece_colour: PieceColour) -> Moves {
@@ -790,6 +754,9 @@ impl GameState {
         }
 
         // TODO repetition. much easier with zobrist hashing
+        if self.draw_by_threefold_repetition() {
+            return Some(GameEnding::Draw);
+        }
         None
     }
 
@@ -834,18 +801,13 @@ impl GameState {
             }; // opposite bishops
         }
 
-        return true;
+        true
     }
 
     fn draw_by_threefold_repetition(&self) -> bool {
         // too expensive without hashing. need to keep a hash
-        return false;
+        false
     }
-}
-
-pub fn usize_to_square_name(square_index: usize) -> String {
-    let coord = BoardCoordinate::from_usize(square_index);
-    coord.square_name()
 }
 
 // misc helpers
