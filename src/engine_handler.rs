@@ -3,7 +3,7 @@ use crate::mechanics::PieceColour;
 use macroquad::prelude::*;
 use std::time::{Duration, Instant};
 
-use crate::evaluators::{NullEvaluator, PieceValues};
+use crate::evaluators::{NullEvaluator, PieceSquareTables, PieceValues};
 use crate::game_mode::GameModeError;
 use crate::search_engines::{AlphaBetaPruning, Negamax, RandomSearch};
 
@@ -13,6 +13,7 @@ pub enum BotVersion {
     Random,
     Negamax,
     AlphaBeta,
+    PieceSquareTable,
 }
 
 macro_rules! bot {
@@ -29,8 +30,9 @@ impl BotVersion {
         use BotVersion as BV;
         match self {
             BV::Random => bot!(RandomSearch, NullEvaluator),
-            BV::Negamax => bot!(Negamax { depth: 3 }, PieceValues),
-            BV::AlphaBeta => bot!(AlphaBetaPruning { depth: 3 }, PieceValues),
+            BV::Negamax => bot!(Negamax { depth: 4 }, PieceValues),
+            BV::AlphaBeta => bot!(AlphaBetaPruning { depth: 4 }, PieceValues),
+            BV::PieceSquareTable => bot!(AlphaBetaPruning { depth: 4 }, PieceSquareTables),
         }
     }
 }
@@ -65,6 +67,7 @@ impl Bot {
             "random" => Ok(BotVersion::Random.to_bot()),
             "negamax" => Ok(BotVersion::Negamax.to_bot()),
             "alphabeta" => Ok(BotVersion::AlphaBeta.to_bot()),
+            "pst" => Ok(BotVersion::PieceSquareTable.to_bot()),
             _ => Err(GameModeError::InvalidBotSelection(argument.to_string())),
         }
     }

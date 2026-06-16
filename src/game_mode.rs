@@ -24,7 +24,7 @@ impl fmt::Display for GameModeError {
             GME::InvalidBotSelection(bot) => {
                 write!(
                     f,
-                    "Invalid bot selection: '{bot}'. Use: random, negamax, alphabeta"
+                    "Invalid bot selection: '{bot}'. Use: random, negamax, alphabeta, pst"
                 )
             }
             GME::InvalidGameMode(mode) => {
@@ -94,16 +94,22 @@ fn select_bot_and_colour_from_args(args: &[String]) -> Result<GameMode, GameMode
 }
 
 fn select_perft_from_args(args: &[String]) -> Result<GameMode, GameModeError> {
+    // TODO fix this
+    //"b3k3/P7/8/8/8/8/1p6/3NKB2 w - - 0 1"
     use GameModeError as GME;
-    if args.len() < 3 {
+
+    if args.len() < 8 {
         return Err(GME::MissingArgument("perft fen".to_string()));
     }
-    if args.len() == 3 {
+    if args.len() == 8 {
         return Err(GME::MissingArgument("search depth".to_string()));
     }
 
-    let fen = args[3].clone();
-    if let Ok(depth) = args[4].parse::<usize>() {
+    let fen = args[2..8].join(" ");
+
+    println!("{}", &fen);
+
+    if let Ok(depth) = args[8].parse::<usize>() {
         return Ok(GameMode::Perft { fen, depth });
     }
 

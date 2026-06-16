@@ -1,15 +1,15 @@
 // macroquad gui mode for ordinary games played on board between a combination of humans and bots
 
+use bradybot::constants::START_FEN;
 use bradybot::engine_handler::Bot;
 use bradybot::game::*;
 use bradybot::game_mode::GameMode;
 use bradybot::game_mode::parse_args;
 use bradybot::game_state::*;
 use bradybot::mechanics::PieceColour;
+
 use macroquad::prelude::*;
 use std::env;
-
-const START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 #[macroquad::main(window_conf)]
 async fn main() {
