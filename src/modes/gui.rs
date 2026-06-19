@@ -1,7 +1,8 @@
-use crate::bot_handler::*;
-use crate::constants::*;
+use crate::engine::bot_handler::*;
+use crate::constants::misc::*;
 use crate::game_state::*;
 use crate::mechanics::*;
+use crate::movegen::MoveType;
 use macroquad::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -42,52 +43,6 @@ pub struct SearchThreadHandler {
 }
 
 pub type Seconds = f32;
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy)]
-pub struct Clock {
-    // seconds
-    fixed_time: Seconds,
-    increment: Seconds,
-    white_time_left: Seconds,
-    black_time_left: Seconds,
-}
-
-impl Default for Clock {
-    fn default() -> Self {
-        // 5 + 5 as default
-        Clock {
-            fixed_time: 300.0,
-            increment: 5.0,
-            white_time_left: 300.0,
-            black_time_left: 300.0,
-        }
-    }
-}
-
-impl Clock {
-    pub fn new(fixed_time: Seconds, increment: Seconds) -> Self {
-        Clock {
-            fixed_time,
-            increment,
-            white_time_left: fixed_time,
-            black_time_left: fixed_time,
-        }
-    }
-    pub fn tick(&mut self, side_to_move: PieceColour) {
-        let frame_time = get_frame_time();
-        match side_to_move {
-            PieceColour::White => self.white_time_left -= frame_time,
-            PieceColour::Black => self.black_time_left -= frame_time,
-        }
-    }
-
-    fn increment(&mut self, side_to_move: PieceColour) {
-        match side_to_move {
-            PieceColour::White => self.white_time_left += self.increment,
-            PieceColour::Black => self.black_time_left += self.increment,
-        }
-    }
-}
 
 impl Board {
     pub fn initialise() -> Self {

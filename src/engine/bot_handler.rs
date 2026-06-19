@@ -3,9 +3,9 @@ use macroquad::prelude::*;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::evaluators::{NullEvaluator, PieceSquareTables, PieceValues};
-use crate::game_mode::GameModeError;
-use crate::search_engines::{AlphaBetaPruning, Negamax, RandomSearch};
+use crate::engine::evaluators::{NullEvaluator, PieceSquareTables, PieceValues};
+use crate::modes::mode_selection::GameModeError;
+use crate::engine::search_engines::{AlphaBetaPruning, Negamax, RandomSearch};
 
 pub type Evaluation = i32;
 

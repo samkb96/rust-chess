@@ -1,5 +1,5 @@
-use crate::bot_handler::Bot;
-use crate::game::{Clock, Seconds};
+use crate::engine::bot_handler::Bot;
+use crate::game_state::{Clock, Seconds};
 use crate::mechanics::PieceColour;
 use std::fmt;
 use std::sync::Arc;
@@ -121,10 +121,7 @@ fn parse_args_bot(args: &[String], arena: bool) -> Result<GameMode, GameModeErro
     let black = Bot::create(args[3].as_str())?;
 
     if arena {
-        Ok(GameMode::BotArena {
-            white,
-            black,
-        })
+        Ok(GameMode::BotArena { white, black })
     } else {
         let clock = parse_clock_from_args(args, 4, 5)?;
         Ok(GameMode::BotVsBot {

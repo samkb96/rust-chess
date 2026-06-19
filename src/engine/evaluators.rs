@@ -1,5 +1,5 @@
-use crate::bot_handler::{Evaluation, Evaluator, SearchData};
-use crate::constants::psts::{BISHOP_PST, KING_PST, KNIGHT_PST, PAWN_PSTS, QUEEN_PST, ROOK_PST};
+use crate::engine::bot_handler::{Evaluation, Evaluator, SearchData};
+use crate::constants::misc::psts::{BISHOP_PST, KING_PST, KNIGHT_PST, PAWN_PSTS, QUEEN_PST, ROOK_PST};
 use crate::game_state::*;
 use crate::mechanics::{PieceColour, pop_lsb};
 

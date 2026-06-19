@@ -1,4 +1,3 @@
-use crate::attack_masks::masks::*;
 use crate::mechanics::*;
 
 // fen strings for intialisation of position
@@ -19,24 +18,6 @@ pub const PIECE_KINDS: [PieceKind; 6] = [
     PieceKind::King,
 ];
 pub const PIECE_COLOURS: [PieceColour; 2] = [PieceColour::White, PieceColour::Black];
-
-// attacks and directions
-// 0-3 are increasing along the ray; 4-7 decreasing
-pub const ATTACK_MASKS: [[BitBoard; 64]; 8] = [
-    NORTHWEST_RAY,
-    NORTH_RAY,
-    NORTHEAST_RAY,
-    EAST_RAY,
-    SOUTHEAST_RAY,
-    SOUTH_RAY,
-    SOUTHWEST_RAY,
-    WEST_RAY,
-];
-pub const PAWN_ATTACKS: [[BitBoard; 64]; 2] = [WHITE_PAWN_ATTACKS, BLACK_PAWN_ATTACKS];
-
-pub const BISHOP_DIRECTIONS: &[usize] = &[0, 2, 4, 6];
-pub const ROOK_DIRECTIONS: &[usize] = &[1, 3, 5, 7];
-pub const QUEEN_DIRECTIONS: &[usize] = &[0, 1, 2, 3, 4, 5, 6, 7];
 
 // relevant squares for castling
 // (obstructible_squares[colour][side], vulnerable_squares[colour_side])

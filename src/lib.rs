@@ -1,11 +1,8 @@
-pub mod attack_masks;
-pub mod bot_arena;
-pub mod bot_handler;
+
 pub mod constants;
-pub mod evaluators;
-pub mod game;
-pub mod game_mode;
+pub mod engine;
 pub mod game_state;
 pub mod mechanics;
-pub mod perft;
-pub mod search_engines;
+pub mod modes;
+pub mod movegen;
+

@@ -1,4 +1,4 @@
-use crate::bot_handler::{Evaluation, Evaluator, SearchData, SearchEngine};
+use crate::engine::bot_handler::{Evaluation, Evaluator, SearchData, SearchEngine};
 use crate::game_state::*; // TODO narrow this
 use crate::mechanics::PieceColour;
 use rand::prelude::*; // can probably dump the random bot

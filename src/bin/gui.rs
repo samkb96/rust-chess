@@ -1,10 +1,9 @@
 // macroquad gui mode for ordinary games played on board between a combination of humans and bots
-#[allow(unused_imports)]
-use bradybot::constants::fen_positions::*;
+use bradybot::constants::misc::fen_positions::*;
 
-use bradybot::bot_handler::Bot;
-use bradybot::game::*;
-use bradybot::game_mode::{GameMode, parse_args};
+use bradybot::engine::bot_handler::Bot;
+use bradybot::modes::gui::*;
+use bradybot::modes::mode_selection::{GameMode, parse_args};
 use bradybot::game_state::*;
 use bradybot::mechanics::PieceColour;
 

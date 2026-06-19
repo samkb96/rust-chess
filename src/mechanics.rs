@@ -1,6 +1,6 @@
-use crate::attack_masks::masks::*;
-use crate::constants::*;
-use crate::game_state::*;
+use crate::constants::masks::*;
+use crate::constants::misc::*;
+use crate::movegen::{MoveType};
 use arrayvec::ArrayString;
 use macroquad::prelude::*;
 
@@ -168,8 +168,6 @@ impl BitBoards {
         }
     }
 }
-
-// attack mask generation
 impl BitBoards {
     fn pawn_attacks(&self, piece_colour: PieceColour) -> BitBoard {
         let mut current_pawn_attack_masks = 0u64;
@@ -265,7 +263,6 @@ impl BitBoards {
         attacked_squares
     }
 }
-
 // helpers
 impl BitBoards {
     fn friendly_pieces_on_ray(&self, piece_colour: PieceColour, ray: BitBoard) -> u32 {
@@ -505,81 +502,6 @@ pub fn closest_blocker(direction: usize, blockers: BitBoard) -> usize {
     }
 }
 
-pub fn mask_up_to_exclusive(start: usize, direction: &usize, blocker_square: usize) -> BitBoard {
-    let step = match direction {
-        0 => 7,  // northwest
-        1 => 8,  // north
-        2 => 9,  // northeast
-        3 => 1,  // east
-        4 => -7, // southeast
-        5 => -8, // south
-        6 => -9, // southwest
-        7 => -1, // west
-        _ => unreachable!(),
-    };
-
-    let mut mask = 0u64;
-    let mut square = start as isize;
-    let mut previous_file = start % 8; // keep track of which file we were before stepping
-
-    loop {
-        square += step;
-        if !(0..64).contains(&square) {
-            break;
-        } // gone off end of board
-        let new_file = (square as usize) % 8; // which file are we on after stepping
-        let file_diff = (new_file as isize - previous_file as isize).abs();
-        if file_diff > 1 {
-            break;
-        }; // if file has changed by more than one, we must have wrapped around
-        previous_file = new_file;
-
-        if square == blocker_square as isize {
-            break;
-        }; // break out before appending final square
-        mask |= 1u64 << square;
-    }
-    mask
-}
-
-pub fn mask_up_to_inclusive(start: usize, direction: &usize, blocker_square: usize) -> BitBoard {
-    let step = match direction {
-        0 => 7,  // northwest
-        1 => 8,  // north
-        2 => 9,  // northeast
-        3 => 1,  // east
-        4 => -7, // southeast
-        5 => -8, // south
-        6 => -9, // southwest
-        7 => -1, // west
-        _ => unreachable!(),
-    };
-
-    let mut mask = 0u64;
-    let mut square = start as isize;
-    let mut previous_file = start % 8; // keep track of which file we were before stepping
-
-    loop {
-        square += step;
-        if !(0..64).contains(&square) {
-            break;
-        } // gone off end of board
-        let new_file = (square as usize) % 8; // which file are we on after stepping
-        let file_diff = (new_file as isize - previous_file as isize).abs();
-        if file_diff > 1 {
-            break;
-        }; // if file has changed by more than one, we must have wrapped around
-        previous_file = new_file;
-
-        mask |= 1u64 << square;
-        if square == blocker_square as isize {
-            break;
-        };
-    }
-    mask
-}
-
-// bit methods
 pub fn index_lsb(bitboard: BitBoard) -> Option<usize> {
     if bitboard == 0 {
         None
