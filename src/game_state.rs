@@ -722,10 +722,7 @@ pub enum GameEnding {
 
 // game endings
 impl GameState {
-    pub fn is_game_over(
-        &self,
-        legal_moves: &Moves,
-    ) -> Option<GameEnding> {
+    pub fn is_game_over(&self, legal_moves: &Moves) -> Option<GameEnding> {
         let exciting_endings = self.victory_or_stalemate(legal_moves);
         if exciting_endings.is_some() {
             return exciting_endings;
@@ -747,10 +744,7 @@ impl GameState {
         None
     }
 
-    fn victory_or_stalemate(
-        &self,
-        legal_moves: &Moves,
-    ) -> Option<GameEnding> {
+    fn victory_or_stalemate(&self, legal_moves: &Moves) -> Option<GameEnding> {
         if !legal_moves.is_empty() {
             return None;
         };

@@ -1,4 +1,4 @@
-use crate::engine_handler::Bot;
+use crate::bot_handler::Bot;
 use crate::game_state::{GameEnding, GameState};
 use libm::{erf, sqrt};
 use std::cmp::Ordering;
@@ -76,8 +76,7 @@ pub fn bot_arena(white: &Bot, black: &Bot) {
         for game_orientation in [O::FirstAsWhite, O::FirstAsBlack] {
             let game_result = match game_orientation {
                 O::FirstAsWhite => play_bot_game(position_fen, white, black),
-                O::FirstAsBlack => play_bot_game(position_fen, black, white)
-            
+                O::FirstAsBlack => play_bot_game(position_fen, black, white),
             };
             arena_result.record(game_result, game_orientation);
         }

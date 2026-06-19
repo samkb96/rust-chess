@@ -1,4 +1,4 @@
-use crate::engine_handler::Bot;
+use crate::bot_handler::Bot;
 use crate::mechanics::PieceColour;
 use std::fmt;
 

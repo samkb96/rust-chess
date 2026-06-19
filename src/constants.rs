@@ -3,9 +3,10 @@ use crate::mechanics::*;
 
 // fen strings for intialisation of position
 pub mod fen_positions {
-pub const START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-pub const QGD_MIDGAME: &str = "rnbqkb1r/ppp2ppp/5n2/3pp3/2PP4/2N5/PPP2PPP/R1BQKBNR w KQkq - 1 4";
-pub const MATE_IN_FOUR: &str = "6k1/5ppp/8/4Q3/8/1B6/4K3/8 w - - 0 1";
+    pub const START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    pub const QGD_MIDGAME: &str =
+        "rnbqkb1r/ppp2ppp/5n2/3pp3/2PP4/2N5/PPP2PPP/R1BQKBNR w KQkq - 1 4";
+    pub const MATE_IN_FOUR: &str = "6k1/5ppp/8/4Q3/8/1B6/4K3/8 w - - 0 1";
 }
 // arrays for looping over pieces & colour
 pub const PIECE_ID_TO_FEN: [char; 6] = ['p', 'n', 'b', 'r', 'q', 'k'];

@@ -1,7 +1,7 @@
 pub mod attack_masks;
 pub mod bot_arena;
+pub mod bot_handler;
 pub mod constants;
-pub mod engine_handler;
 pub mod evaluators;
 pub mod game;
 pub mod game_mode;

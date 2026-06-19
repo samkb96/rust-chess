@@ -1,5 +1,5 @@
+use crate::bot_handler::*;
 use crate::constants::*;
-use crate::engine_handler::*;
 use crate::game_state::*;
 use crate::mechanics::*;
 use macroquad::prelude::*;
@@ -26,6 +26,14 @@ pub struct Board {
     legal_move_highlights: Vec<usize>,
     last_move_highlight: Option<usize>,
     pending_promotion: Option<PendingPromotion>,
+    bot_state: BotState,
+}
+
+#[derive(Copy, Clone, Debug)]
+enum BotState {
+    Idle,
+    Waiting,
+    Thinking,
 }
 
 impl Board {
@@ -36,6 +44,7 @@ impl Board {
             legal_move_highlights: vec![],
             last_move_highlight: None,
             pending_promotion: None,
+            bot_state: BotState::Idle,
         }
     }
 
@@ -105,22 +114,56 @@ impl Board {
         self.legal_move_highlights();
         self.last_move_highlights();
         self.draw_pieces(game_state, texture);
+        self.draw_promotion_picker(texture, font);
+    }
 
+    pub fn update_human_game(
+        &mut self,
+        game_state: &mut GameState,
+        mouse_position: Vec2,
+        bot: &Bot,
+        bot_colour: PieceColour,
+        texture: &PieceTextures,
+    ) {
+        if bot_colour == game_state.side_to_move {
+            match self.bot_state {
+                BotState::Waiting => self.bot_state = BotState::Thinking, // renders one frame for piece to be placed before we start thinking
+                BotState::Thinking => { // only start thinking one frame after piece release
+                    self.bot_turn(game_state, bot);
+                    self.bot_state = BotState::Idle
+                }
+                BotState::Idle => (),
+            }
+
+        } else {
+            self.human_turn(game_state, mouse_position, texture);
+        }
+    }
+
+    fn bot_turn(&mut self, game_state: &mut GameState, bot: &Bot) {
+
+        let maybe_move = bot.choose_move(game_state);
+
+        if let Some(move_to_make) = maybe_move {
+            game_state.make_move(move_to_make);
+            self.last_move_highlight = Some(move_to_make.end_square);
+        }
+    }
+
+    fn human_turn(
+        &mut self,
+        game_state: &mut GameState,
+        mouse_position: Vec2,
+        texture: &PieceTextures,
+    ) {
         // dragged piece drawn on top of everything
+
         if let Some(mouse_position) = self.drag_mouse_position {
             if let DragState::Started { piece, .. } | DragState::Dragging { piece, .. } =
                 self.drag_state
             {
                 Self::draw_piece_at_mouse_position(&piece, mouse_position, texture)
             }
-        }
-
-        self.draw_promotion_picker(texture, font)
-    }
-
-    pub fn update_human_game(&mut self, game_state: &mut GameState, mouse_position: Vec2) {
-        if is_key_pressed(KeyCode::Z) {
-            game_state.unmake_move()
         }
 
         self.promotion_picker_handler(game_state, mouse_position);
@@ -131,7 +174,7 @@ impl Board {
                 self.dragstate_handler_started(mouse_position, piece, origin)
             }
             DragState::Dragging { piece, origin } => {
-                self.dragstate_handler_dragging(game_state, mouse_position, piece, origin)
+                self.dragstate_handler_dragging(game_state, mouse_position, piece, origin);
             }
         }
     }
@@ -294,7 +337,6 @@ impl Board {
 
         game_state.make_move(candidate_move);
         self.last_move_highlight = Some(candidate_move.end_square);
-        // TODO: add in single player stuff
 
         self.pending_promotion = None;
     }
@@ -434,6 +476,7 @@ impl Board {
             if relevant_legal_moves.contains(&candidate_move) {
                 game_state.make_move(candidate_move);
                 self.last_move_highlight = Some(candidate_move.end_square);
+                self.bot_state = BotState::Waiting
             };
 
             self.legal_move_highlights = Vec::new();

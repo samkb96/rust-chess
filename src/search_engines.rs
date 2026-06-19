@@ -1,4 +1,4 @@
-use crate::engine_handler::{Evaluation, Evaluator, SearchData, SearchEngine};
+use crate::bot_handler::{Evaluation, Evaluator, SearchData, SearchEngine};
 use crate::game_state::*; // TODO narrow this
 use crate::mechanics::PieceColour;
 use rand::prelude::*; // can probably dump the random bot
@@ -199,14 +199,16 @@ impl AlphaBetaPruning {
 fn evaluate_end_of_game(
     search_state: &GameState,
     legal_moves: &Moves,
-    depth: u8, 
+    depth: u8,
 ) -> Option<Evaluation> {
     if let Some(game_ending) = search_state.is_game_over(legal_moves) {
         use GameEnding as GE;
         use PieceColour as PC;
         match (search_state.side_to_move, game_ending) {
             (PC::White, GE::WhiteWins) | (PC::Black, GE::BlackWins) => Some(1000000 - depth as i32), // prefer faster mates
-            (PC::White, GE::BlackWins) | (PC::Black, GE::WhiteWins) => Some(-1000000 + depth as i32),
+            (PC::White, GE::BlackWins) | (PC::Black, GE::WhiteWins) => {
+                Some(-1000000 + depth as i32)
+            }
             _ => Some(0), // draws
         }
     } else {

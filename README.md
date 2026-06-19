@@ -28,21 +28,23 @@ Aims:
 - [x] Checking logic
 - [x] Edge cases (castling, en passant)
 - [x] Match node counts for a bunch of test positions
-- [ ] Game endings (50 move draw, repetition draw, insufficient material draw, stalemate, checkmate)
+- [x] Game endings (50 move draw, repetition draw, insufficient material draw, stalemate, checkmate)
+    - postponed repetition until zobrist hashing. going with max 400 move games instead for now
 - [ ] Time controls
 
 ### Bot v1
-- [ ] Simple evaluation function: material evaluation, piece-square tables
-- [ ] Simple search: negamax, alpha-beta
+- [x] Simple evaluation function: material evaluation, piece-square tables
+- [x] Simple search: negamax, alpha-beta
 
 ### Analytics
-- [ ] Speed test metrics
+- [x] Speed test metrics
 - [ ] Search metrics
+    - to improve, average depth, max depth, etc.
 - [ ] Thought process logs
 
 ### Move Generation: Possible Optimisation
 - [ ] Magic bitboards
-- [ ] Attack tables
+- [x] Attack tables
 - [x] Partial mask tables
 - [ ] Occupancy filtering
 - [ ] Move masking

@@ -2,7 +2,7 @@
 #[allow(unused_imports)]
 use bradybot::constants::fen_positions::*;
 
-use bradybot::engine_handler::Bot;
+use bradybot::bot_handler::Bot;
 use bradybot::game::*;
 use bradybot::game_mode::GameMode;
 use bradybot::game_mode::parse_args;
@@ -19,17 +19,16 @@ async fn main() {
 
     match game_mode {
         GameMode::BotVsBot { white, black } => {
-            run_gui_bot_vs_bot(MATE_IN_FOUR, &white, &black).await;
+            run_gui_bot_vs_bot(START_FEN, &white, &black).await;
         }
         GameMode::HumanVsBot { bot, bot_colour } => {
-            run_gui_human_vs_bot(START_FEN, &bot, &bot_colour).await;
+            run_gui_human_vs_bot(START_FEN, &bot, bot_colour).await;
         }
         _ => {
             panic!("incorrect binary setup")
         }
     }
 }
-
 
 async fn run_gui_bot_vs_bot(fen: &str, white_bot: &Bot, black_bot: &Bot) {
     request_new_screen_size(WINDOW_WIDTH, WINDOW_HEIGHT);
@@ -55,7 +54,7 @@ async fn run_gui_bot_vs_bot(fen: &str, white_bot: &Bot, black_bot: &Bot) {
     }
 }
 
-async fn run_gui_human_vs_bot(fen: &str, _bot: &Bot, _bot_colour: &PieceColour) {
+async fn run_gui_human_vs_bot(fen: &str, bot: &Bot, bot_colour: PieceColour) {
     request_new_screen_size(WINDOW_WIDTH, WINDOW_HEIGHT);
     let textures = PieceTextures::new().await;
     let aptos: Font = load_ttf_font("assets/fonts/aptos-light.ttf")
@@ -66,8 +65,6 @@ async fn run_gui_human_vs_bot(fen: &str, _bot: &Bot, _bot_colour: &PieceColour) 
     let mut board = Board::initialise();
 
     loop {
-        // TODO set this up with bot input
-        // need a bot_to_move field in one of the types in game.rs, or something
         if kill_game() {
             break;
         }
@@ -75,8 +72,13 @@ async fn run_gui_human_vs_bot(fen: &str, _bot: &Bot, _bot_colour: &PieceColour) 
         clear_background(BLACK);
 
         board.draw_human_game_to_screen(&game_state, &textures, &aptos);
-        board.update_human_game(&mut game_state, mouse_position().into());
-        draw_framerate(&aptos);
+        board.update_human_game(
+            &mut game_state,
+            mouse_position().into(),
+            bot,
+            bot_colour,
+            &textures,
+        );
 
         next_frame().await;
     }

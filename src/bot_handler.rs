@@ -31,7 +31,7 @@ impl BotVersion {
             BV::Random => bot!(RandomSearch, NullEvaluator),
             BV::Negamax => bot!(Negamax { depth: 3 }, PieceValues),
             BV::AlphaBeta => bot!(AlphaBetaPruning { depth: 4 }, PieceValues),
-            BV::PieceSquareTable => bot!(AlphaBetaPruning { depth: 4 }, PieceSquareTables),
+            BV::PieceSquareTable => bot!(AlphaBetaPruning { depth: 5 }, PieceSquareTables),
         }
     }
 }
@@ -51,11 +51,7 @@ pub trait SearchEngine: Send + Sync {
 }
 
 pub trait Evaluator: Send + Sync {
-    fn evaluate(
-        &self,
-        search_state: &GameState,
-        search_data: &mut SearchData,
-    ) -> Evaluation;
+    fn evaluate(&self, search_state: &GameState, search_data: &mut SearchData) -> Evaluation;
 }
 
 impl Bot {
@@ -75,11 +71,10 @@ impl Bot {
         // remove the clone once it's all working
         let mut search_state = game_state.clone();
 
-        if let Some(move_choice) = self.search_engine.search(
-            &mut search_state,
-            &mut search_data,
-            &*self.evaluator,
-        ) {
+        if let Some(move_choice) =
+            self.search_engine
+                .search(&mut search_state, &mut search_data, &*self.evaluator)
+        {
             search_data.time_taken = search_start_time.elapsed();
             //search_data.log_search_results();
             return Some(move_choice);
@@ -107,16 +102,25 @@ impl SearchData {
     pub fn log_search_results(&self) {
         println!("-----------------------------------------------");
         println!("Eval: {}", self.current_eval);
-        println!("Nodes evaluated: {}", thousands_separator(self.nodes_evaluated as usize));
-        println!("Time taken: {}ms", thousands_separator(self.time_taken.as_millis() as usize));
-        println!("Nodes per second: {}", thousands_separator(self.nps() as usize));
+        println!(
+            "Nodes evaluated: {}",
+            thousands_separator(self.nodes_evaluated as usize)
+        );
+        println!(
+            "Time taken: {}ms",
+            thousands_separator(self.time_taken.as_millis() as usize)
+        );
+        println!(
+            "Nodes per second: {}",
+            thousands_separator(self.nps() as usize)
+        );
     }
 }
 
 fn thousands_separator(n: usize) -> String {
     let s = n.to_string();
     let mut result = String::new();
-    
+
     for (i, ch) in s.chars().rev().enumerate() {
         if i > 0 && i % 3 == 0 {
             result.insert(0, ',');

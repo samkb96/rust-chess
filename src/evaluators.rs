@@ -1,5 +1,5 @@
+use crate::bot_handler::{Evaluation, Evaluator, SearchData};
 use crate::constants::psts::{BISHOP_PST, KING_PST, KNIGHT_PST, PAWN_PSTS, QUEEN_PST, ROOK_PST};
-use crate::engine_handler::{Evaluation, Evaluator, SearchData};
 use crate::game_state::*;
 use crate::mechanics::{PieceColour, pop_lsb};
 
@@ -10,11 +10,7 @@ pub struct PieceSquareTables;
 // -------------------------------------------------------- version 0 --------------------------------------------------------
 //
 impl Evaluator for NullEvaluator {
-    fn evaluate(
-        &self,
-        _search_state: &GameState,
-        _search_data: &mut SearchData,
-    ) -> Evaluation {
+    fn evaluate(&self, _search_state: &GameState, _search_data: &mut SearchData) -> Evaluation {
         0
     }
 }
@@ -22,11 +18,7 @@ impl Evaluator for NullEvaluator {
 // -------------------------------------------------------- version 1 --------------------------------------------------------
 //
 impl Evaluator for PieceValues {
-    fn evaluate(
-        &self,
-        search_state: &GameState,
-        _search_data: &mut SearchData,
-    ) -> Evaluation {
+    fn evaluate(&self, search_state: &GameState, _search_data: &mut SearchData) -> Evaluation {
         let eval = piece_values(search_state);
 
         match search_state.side_to_move {
@@ -56,11 +48,7 @@ const PIECE_VALUES: [Evaluation; 5] = [100, 300, 301, 500, 900];
 // -------------------------------------------------------- version 2 --------------------------------------------------------
 //
 impl Evaluator for PieceSquareTables {
-    fn evaluate(
-        &self,
-        search_state: &GameState,
-        _search_data: &mut SearchData,
-    ) -> Evaluation {
+    fn evaluate(&self, search_state: &GameState, _search_data: &mut SearchData) -> Evaluation {
         let piece_value_eval = piece_values(search_state);
         let piece_square_eval = get_piece_square_evals(search_state);
         let eval = piece_value_eval + piece_square_eval;
