@@ -102,7 +102,8 @@ fn play_bot_game(position_fen: &str, white: &Bot, black: &Bot) -> GameEnding {
 }
 
 fn make_move_and_check_for_game_over(game_state: &mut GameState, bot: &Bot) -> Option<GameEnding> {
-    if let Some(move_to_make) = bot.choose_move(game_state) {
+    let search_state = game_state.clone();
+    if let Some(move_to_make) = bot.choose_move(search_state) {
         game_state.make_move(move_to_make);
     } else {
         panic!("Should have been able to find a move")

@@ -10,7 +10,10 @@ fn main() {
     let game_mode = parse_args(args).unwrap_or_else(|err| panic!("{err}"));
 
     match game_mode {
-        GameMode::BotArena { white, black } => bot_arena(&white, &black),
+        GameMode::BotArena {
+            white,
+            black,
+        } => bot_arena(&white, &black),
         GameMode::Perft { fen, depth } => call_perft(&fen, depth),
         _ => {
             panic!("You've set up the binaries logic incorrectly")

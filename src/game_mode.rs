@@ -1,12 +1,28 @@
 use crate::bot_handler::Bot;
+use crate::game::{Clock, Seconds};
 use crate::mechanics::PieceColour;
 use std::fmt;
+use std::sync::Arc;
 
 pub enum GameMode {
-    HumanVsBot { bot: Bot, bot_colour: PieceColour }, // gui
-    BotVsBot { white: Bot, black: Bot },              // gui
-    BotArena { white: Bot, black: Bot },              // cli
-    Perft { fen: String, depth: usize },              // cli
+    HumanVsBot {
+        bot: Arc<Bot>,
+        bot_colour: PieceColour,
+        clock: Clock,
+    }, // gui
+    BotVsBot {
+        white: Arc<Bot>,
+        black: Arc<Bot>,
+        clock: Clock,
+    }, // gui
+    BotArena {
+        white: Arc<Bot>,
+        black: Arc<Bot>,
+    }, // cli
+    Perft {
+        fen: String,
+        depth: usize,
+    }, // cli
 }
 
 #[derive(Debug)]
@@ -44,7 +60,6 @@ impl fmt::Display for GameModeError {
 }
 
 pub fn parse_args(args: &[String]) -> Result<GameMode, GameModeError> {
-    use GameMode as M;
     use GameModeError as E;
 
     if args.len() < 2 {
@@ -52,21 +67,15 @@ pub fn parse_args(args: &[String]) -> Result<GameMode, GameModeError> {
     }
 
     match args[1].as_str() {
-        "human" => select_bot_and_colour_from_args(args),
-        "bvb" => {
-            let (white, black) = select_bots_from_args(args)?;
-            Ok(M::BotVsBot { white, black })
-        }
-        "arena" => {
-            let (white, black) = select_bots_from_args(args)?;
-            Ok(M::BotArena { white, black })
-        }
+        "human" => parse_args_human(args),
+        "bvb" => parse_args_bot(args, false),
+        "arena" => parse_args_bot(args, true),
         "perft" => select_perft_from_args(args),
         _ => Err(E::InvalidGameMode(args[1].to_string())),
     }
 }
 
-fn select_bot_and_colour_from_args(args: &[String]) -> Result<GameMode, GameModeError> {
+fn parse_args_human(args: &[String]) -> Result<GameMode, GameModeError> {
     use GameModeError as E;
     if args.len() < 3 {
         return Err(E::InvalidBotSelection("".to_string()));
@@ -79,30 +88,61 @@ fn select_bot_and_colour_from_args(args: &[String]) -> Result<GameMode, GameMode
 
     if args.len() >= 4 {
         match args[3].as_ref() {
-            "white" => {
+            "w" => {
                 bot_colour = PieceColour::White;
             }
-            "black" => (),
+            "b" => (),
             _ => {
                 return Err(E::InvalidArgumentValue {
                     arg: args[3].clone(),
                     expected: "bot colour".to_string(),
                 });
             }
-        }
+        };
     }
 
-    Ok(GameMode::HumanVsBot { bot, bot_colour })
+    let clock = parse_clock_from_args(args, 4, 5)?;
+
+    Ok(GameMode::HumanVsBot {
+        bot,
+        bot_colour,
+        clock,
+    })
+}
+
+fn parse_args_bot(args: &[String], arena: bool) -> Result<GameMode, GameModeError> {
+    use GameModeError as E;
+
+    if args.len() < 4 {
+        return Err(E::InvalidBotSelection("".to_string()));
+    }
+
+    let white = Bot::create(args[2].as_str())?; // propagate invalid bot selection error
+    let black = Bot::create(args[3].as_str())?;
+
+    if arena {
+        Ok(GameMode::BotArena {
+            white,
+            black,
+        })
+    } else {
+        let clock = parse_clock_from_args(args, 4, 5)?;
+        Ok(GameMode::BotVsBot {
+            white,
+            black,
+            clock,
+        })
+    }
 }
 
 fn select_perft_from_args(args: &[String]) -> Result<GameMode, GameModeError> {
-    use GameModeError as GME;
+    use GameModeError as E;
 
     if args.len() < 8 {
-        return Err(GME::MissingArgument("perft fen".to_string()));
+        return Err(E::MissingArgument("perft fen".to_string()));
     }
     if args.len() == 8 {
-        return Err(GME::MissingArgument("search depth".to_string()));
+        return Err(E::MissingArgument("search depth".to_string()));
     }
 
     let fen = args[2..8].join(" ");
@@ -113,20 +153,41 @@ fn select_perft_from_args(args: &[String]) -> Result<GameMode, GameModeError> {
         return Ok(GameMode::Perft { fen, depth });
     }
 
-    Err(GME::InvalidArgumentValue {
+    Err(E::InvalidArgumentValue {
         arg: (args[4].to_string()),
         expected: "usize".to_string(),
     })
 }
 
-fn select_bots_from_args(args: &[String]) -> Result<(Bot, Bot), GameModeError> {
-    use GameModeError as GME;
-    if args.len() < 4 {
-        return Err(GME::InvalidBotSelection("".to_string()));
-    }
+fn parse_clock_from_args(
+    args: &[String],
+    minutes_arg_index: usize,
+    increment_arg_index: usize,
+) -> Result<Clock, GameModeError> {
+    use GameModeError as E;
 
-    let white = Bot::create(args[2].as_str())?; // propagate invalid bot selection error
-    let black = Bot::create(args[3].as_str())?;
+    let Some(maybe_minutes) = args.get(minutes_arg_index) else {
+        return Ok(Clock::new(60.0, 1.0)); // 1+1 unless otherwise specified
+    };
 
-    Ok((white, black))
+    let Ok(minutes) = maybe_minutes.parse::<Seconds>() else {
+        return Err(E::InvalidArgumentValue {
+            arg: maybe_minutes.to_string(),
+            expected: "start in minutes".to_string(),
+        });
+    };
+
+    let Some(maybe_increment) = args.get(increment_arg_index) else {
+        let default_increment = (minutes / 60.0).floor();
+        return Ok(Clock::new(minutes, default_increment)); // assume 5+5, 3+3, 1+1 etc
+    };
+
+    let Ok(increment) = maybe_increment.parse::<Seconds>() else {
+        return Err(E::InvalidArgumentValue {
+            arg: maybe_increment.to_owned(),
+            expected: "increment in seconds".to_string(),
+        });
+    };
+
+    Ok(Clock::new(minutes * 60.0, increment))
 }

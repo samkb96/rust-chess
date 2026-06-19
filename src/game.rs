@@ -4,15 +4,17 @@ use crate::game_state::*;
 use crate::mechanics::*;
 use macroquad::prelude::*;
 use std::collections::HashMap;
-use std::thread::sleep;
-use std::time::Duration;
+use std::sync::Arc;
+use std::thread::JoinHandle;
 
-pub const WINDOW_WIDTH: f32 = SQUARE_SIZE * 9.;
+pub const WINDOW_WIDTH: f32 = SQUARE_SIZE * 10.;
 pub const WINDOW_HEIGHT: f32 = SQUARE_SIZE * 9.;
 const SQUARE_SIZE: f32 = 100.;
 
 const X_OFFSET: f32 = 50.;
 const Y_OFFSET: f32 = 50.;
+
+const CLOCK_FONT_SIZE: u16 = 45;
 
 const DARK_COLOUR: Color = color_u8!(167, 128, 99, 255);
 const LIGHT_COLOUR: Color = color_u8!(238, 238, 210, 255);
@@ -20,20 +22,71 @@ const LEGAL_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(223, 130, 53, 100);
 const LAST_MOVE_HIGHLIGHT_COLOUR: Color = color_u8!(161, 12, 14, 100);
 const DEEMPHASISED_COLOUR: Color = color_u8!(153, 134, 119, 175);
 
+const DARK_CLOCK_COLOUR: Color = color_u8!(255, 255, 255, 25);
+const DARK_CLOCK_BORDER: Color = color_u8!(255, 255, 255, 10);
+const LIGHT_CLOCK_COLOUR: Color = color_u8!(255, 255, 255, 50);
+const LIGHT_CLOCK_BORDER: Color = color_u8!(255, 255, 255, 10);
+
 pub struct Board {
     drag_state: DragState,
     drag_mouse_position: Option<Vec2>,
     legal_move_highlights: Vec<usize>,
     last_move_highlight: Option<usize>,
     pending_promotion: Option<PendingPromotion>,
-    bot_state: BotState,
 }
 
-#[derive(Copy, Clone, Debug)]
-enum BotState {
-    Idle,
-    Waiting,
-    Thinking,
+#[derive(Default)]
+pub struct SearchThreadHandler {
+    pub bot_thread: Option<JoinHandle<Option<Move>>>,
+    pub waiting_for_bot: bool,
+}
+
+pub type Seconds = f32;
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy)]
+pub struct Clock {
+    // seconds
+    fixed_time: Seconds,
+    increment: Seconds,
+    white_time_left: Seconds,
+    black_time_left: Seconds,
+}
+
+impl Default for Clock {
+    fn default() -> Self {
+        // 5 + 5 as default
+        Clock {
+            fixed_time: 300.0,
+            increment: 5.0,
+            white_time_left: 300.0,
+            black_time_left: 300.0,
+        }
+    }
+}
+
+impl Clock {
+    pub fn new(fixed_time: Seconds, increment: Seconds) -> Self {
+        Clock {
+            fixed_time,
+            increment,
+            white_time_left: fixed_time,
+            black_time_left: fixed_time,
+        }
+    }
+    pub fn tick(&mut self, side_to_move: PieceColour) {
+        let frame_time = get_frame_time();
+        match side_to_move {
+            PieceColour::White => self.white_time_left -= frame_time,
+            PieceColour::Black => self.black_time_left -= frame_time,
+        }
+    }
+
+    fn increment(&mut self, side_to_move: PieceColour) {
+        match side_to_move {
+            PieceColour::White => self.white_time_left += self.increment,
+            PieceColour::Black => self.black_time_left += self.increment,
+        }
+    }
 }
 
 impl Board {
@@ -44,8 +97,40 @@ impl Board {
             legal_move_highlights: vec![],
             last_move_highlight: None,
             pending_promotion: None,
-            bot_state: BotState::Idle,
         }
+    }
+}
+
+// general drawing
+impl Board {
+    pub fn draw_bot_game_to_screen(
+        &self,
+        game_state: &GameState,
+        texture: &PieceTextures,
+        board_font: &Font,
+        clock: &mut Clock,
+        clock_font: &Font,
+    ) {
+        self.draw_whole_board(board_font);
+        self.last_move_highlights();
+        self.draw_pieces(game_state, texture);
+        Board::draw_clock(clock, clock_font, game_state.side_to_move);
+    }
+
+    pub fn draw_human_game_to_screen(
+        &self,
+        game_state: &GameState,
+        texture: &PieceTextures,
+        board_font: &Font,
+        clock: &Clock,
+        clock_font: &Font,
+    ) {
+        self.draw_whole_board(board_font);
+        self.legal_move_highlights();
+        self.last_move_highlights();
+        self.draw_pieces(game_state, texture);
+        self.draw_promotion_picker(texture, board_font);
+        Board::draw_clock(clock, clock_font, game_state.side_to_move);
     }
 
     fn draw_whole_board(&self, font: &Font) {
@@ -68,85 +153,69 @@ impl Board {
     }
 }
 
-// bot version
+// move making
 impl Board {
-    pub fn draw_bot_game_to_screen(
-        &self,
-        game_state: &GameState,
-        texture: &PieceTextures,
-        font: &Font,
+    pub fn update_from_bot(
+        &mut self,
+        game_state: &mut GameState,
+        bot: &Arc<Bot>,
+        search_thread_handler: &mut SearchThreadHandler,
+        clock: &mut Clock,
     ) {
-        self.draw_whole_board(font);
-        self.last_move_highlights();
-        self.draw_pieces(game_state, texture);
-    }
-
-    pub fn update_bot_game(&self, game_state: &mut GameState, white_bot: &Bot, black_bot: &Bot) {
-        let side_to_move = game_state.side_to_move;
-
-        let move_to_make = match side_to_move {
-            PieceColour::White => white_bot.choose_move(game_state),
-            PieceColour::Black => black_bot.choose_move(game_state),
-        };
-
-        if let Some(valid_move) = move_to_make {
-            game_state.make_move(valid_move)
+        if search_thread_handler.waiting_for_bot {
+            self.bot_turn(game_state, search_thread_handler, clock);
         } else {
-            let end_result = game_state
-                .is_game_over(&game_state.legal_moves())
-                .expect("No bot move found, despite no game over");
-            dbg!(end_result);
-            sleep(Duration::new(10, 0));
-            panic!("Closing game");
+            Board::start_bot_thinking(game_state, bot, search_thread_handler)
         }
     }
-}
 
-// human input version
-impl Board {
-    pub fn draw_human_game_to_screen(
-        &self,
-        game_state: &GameState,
-        texture: &PieceTextures,
-        font: &Font,
+    fn bot_turn(
+        &mut self,
+        game_state: &mut GameState,
+        search_thread_handler: &mut SearchThreadHandler,
+        clock: &mut Clock,
     ) {
-        self.draw_whole_board(font);
-        self.legal_move_highlights();
-        self.last_move_highlights();
-        self.draw_pieces(game_state, texture);
-        self.draw_promotion_picker(texture, font);
+        if let Some(thread) = search_thread_handler.bot_thread.take() {
+            // if there's no thread to take, we loop back around the gui and create one with start_bot_thinking
+            if thread.is_finished() {
+                let maybe_move = thread.join().unwrap();
+                if let Some(move_to_make) = maybe_move {
+                    clock.increment(game_state.side_to_move);
+                    game_state.make_move(move_to_make);
+                    self.last_move_highlight = Some(move_to_make.end_square);
+                    search_thread_handler.waiting_for_bot = false;
+                }
+            } else {
+                search_thread_handler.bot_thread = Some(thread); // put the thread back if not done yet
+            }
+        }
     }
 
-    pub fn update_human_game(
+    fn start_bot_thinking(
+        game_state: &GameState,
+        bot: &Arc<Bot>,
+        search_thread_handler: &mut SearchThreadHandler,
+    ) {
+        let search_state = game_state.clone();
+        let bot_clone = bot.clone();
+
+        search_thread_handler.bot_thread = Some(std::thread::spawn(move || {
+            bot_clone.choose_move(search_state)
+        }));
+
+        search_thread_handler.waiting_for_bot = true;
+    }
+
+    pub fn update_from_human(
         &mut self,
         game_state: &mut GameState,
         mouse_position: Vec2,
-        bot: &Bot,
-        bot_colour: PieceColour,
         texture: &PieceTextures,
+        clock: &mut Clock,
     ) {
-        if bot_colour == game_state.side_to_move {
-            match self.bot_state {
-                BotState::Waiting => self.bot_state = BotState::Thinking, // renders one frame for piece to be placed before we start thinking
-                BotState::Thinking => { // only start thinking one frame after piece release
-                    self.bot_turn(game_state, bot);
-                    self.bot_state = BotState::Idle
-                }
-                BotState::Idle => (),
-            }
-
-        } else {
-            self.human_turn(game_state, mouse_position, texture);
-        }
-    }
-
-    fn bot_turn(&mut self, game_state: &mut GameState, bot: &Bot) {
-
-        let maybe_move = bot.choose_move(game_state);
-
-        if let Some(move_to_make) = maybe_move {
+        if let Some(move_to_make) = self.human_turn(game_state, mouse_position, texture) {
+            clock.increment(game_state.side_to_move);
             game_state.make_move(move_to_make);
-            self.last_move_highlight = Some(move_to_make.end_square);
         }
     }
 
@@ -155,9 +224,7 @@ impl Board {
         game_state: &mut GameState,
         mouse_position: Vec2,
         texture: &PieceTextures,
-    ) {
-        // dragged piece drawn on top of everything
-
+    ) -> Option<Move> {
         if let Some(mouse_position) = self.drag_mouse_position {
             if let DragState::Started { piece, .. } | DragState::Dragging { piece, .. } =
                 self.drag_state
@@ -174,13 +241,117 @@ impl Board {
                 self.dragstate_handler_started(mouse_position, piece, origin)
             }
             DragState::Dragging { piece, origin } => {
-                self.dragstate_handler_dragging(game_state, mouse_position, piece, origin);
+                self.dragstate_handler_dragging(game_state, mouse_position, piece, origin)
             }
         }
     }
 }
 
-// human helpers
+impl Board {
+    fn draw_clock(clock: &Clock, font: &Font, side_to_move: PieceColour) {
+        let white_time = format_timestring(clock.white_time_left);
+        let black_time = format_timestring(clock.black_time_left);
+
+        let x = X_OFFSET + 8.2 * SQUARE_SIZE;
+        let white_y = Y_OFFSET + 4.5 * SQUARE_SIZE - 5.0;
+        let black_y = Y_OFFSET + 4.0 * SQUARE_SIZE - 5.0;
+
+        let border_size = 2.0;
+
+        let box_width = 110.0;
+        let box_height = 35.0;
+
+        let h_padding = 8.0;
+        let v_padding = 4.0;
+
+        let rect_width = box_width + 2.0 * h_padding;
+        let rect_height = box_height + 2.0 * v_padding;
+
+        let rect_x = x - h_padding;
+        let rect_y_white = white_y - box_height - v_padding;
+        let rect_y_black = black_y - box_height - v_padding;
+
+        let (white_rect_colour, black_rect_colour, white_border_colour, black_border_colour) =
+            match side_to_move {
+                PieceColour::White => (
+                    LIGHT_CLOCK_COLOUR,
+                    DARK_CLOCK_COLOUR,
+                    LIGHT_CLOCK_BORDER,
+                    DARK_CLOCK_BORDER,
+                ),
+                PieceColour::Black => (
+                    DARK_CLOCK_COLOUR,
+                    LIGHT_CLOCK_COLOUR,
+                    DARK_CLOCK_BORDER,
+                    LIGHT_CLOCK_BORDER,
+                ),
+            };
+
+        // borders
+        draw_rectangle(
+            rect_x - border_size,
+            rect_y_white - border_size,
+            rect_width + 2.0 * border_size,
+            rect_height + 2.0 * border_size,
+            white_border_colour,
+        );
+        draw_rectangle(
+            rect_x - border_size,
+            rect_y_black - border_size,
+            rect_width + 2.0 * border_size,
+            rect_height + 2.0 * border_size,
+            black_border_colour,
+        );
+
+        draw_rectangle(
+            rect_x,
+            rect_y_white,
+            rect_width,
+            rect_height,
+            white_rect_colour,
+        );
+        draw_rectangle(
+            rect_x,
+            rect_y_black,
+            rect_width,
+            rect_height,
+            black_rect_colour,
+        );
+
+        draw_text_ex(
+            &white_time,
+            x,
+            white_y,
+            TextParams {
+                font: Some(font),
+                font_size: CLOCK_FONT_SIZE,
+                color: BLACK,
+                ..Default::default()
+            },
+        );
+
+        draw_text_ex(
+            &black_time,
+            x,
+            black_y,
+            TextParams {
+                font: Some(font),
+                font_size: CLOCK_FONT_SIZE,
+                color: BLACK,
+                ..Default::default()
+            },
+        );
+    }
+}
+
+fn format_timestring(time: f32) -> String {
+    let total_seconds = time.floor() as usize;
+    let (minutes, seconds) = (total_seconds / 60, total_seconds % 60);
+    let zero_pad = if seconds < 10 { "0" } else { "" };
+    format!("{minutes}:{zero_pad}{seconds}")
+}
+
+// human move handlers
 impl Board {
     fn get_picker_squares(target: BoardCoordinate) -> [BoardCoordinate; 4] {
         let file = target.file;
@@ -400,7 +571,11 @@ impl Board {
         }
     }
 
-    fn dragstate_handler_none(&mut self, game_state: &GameState, mouse_position: Vec2) {
+    fn dragstate_handler_none(
+        &mut self,
+        game_state: &GameState,
+        mouse_position: Vec2,
+    ) -> Option<Move> {
         if is_mouse_button_down(MouseButton::Left) {
             if let Some(coordinate) = BoardCoordinate::mouse_pos_to_coordinate(mouse_position) {
                 if let Some(piece) = game_state.bitboards.piece_at_square(coordinate.to_usize()) {
@@ -412,6 +587,7 @@ impl Board {
                 }
             }
         }
+        None
     }
 
     fn dragstate_handler_started(
@@ -419,7 +595,7 @@ impl Board {
         mouse_position: Vec2,
         piece: Piece,
         origin: BoardCoordinate,
-    ) {
+    ) -> Option<Move> {
         if is_mouse_button_down(MouseButton::Left) {
             // if piece is held, move into drag mode
             self.drag_state = DragState::Dragging { piece, origin };
@@ -429,6 +605,7 @@ impl Board {
             self.drag_state = DragState::None;
             self.drag_mouse_position = None;
         }
+        None
     }
 
     fn dragstate_handler_dragging(
@@ -437,7 +614,8 @@ impl Board {
         mouse_position: Vec2,
         piece: Piece,
         origin: BoardCoordinate,
-    ) {
+    ) -> Option<Move> {
+        let mut move_to_return: Option<Move> = None;
         self.drag_mouse_position = Some(mouse_position);
         let relevant_legal_moves = game_state.legal_moves_from(origin.to_usize());
 
@@ -446,8 +624,6 @@ impl Board {
         if is_mouse_button_released(MouseButton::Left) {
             let target = BoardCoordinate::mouse_pos_to_coordinate(mouse_position).unwrap_or(origin);
 
-            // separate control flow if we're pushing a pawn to the last rank
-            // we check that promotion is legal here to avoid bringing up the picker
             if self.is_legal_promotion_attempt(
                 game_state,
                 piece,
@@ -474,15 +650,16 @@ impl Board {
             let candidate_move = self.candidate_move(game_state, origin, target, piece, None);
 
             if relevant_legal_moves.contains(&candidate_move) {
-                game_state.make_move(candidate_move);
                 self.last_move_highlight = Some(candidate_move.end_square);
-                self.bot_state = BotState::Waiting
+                move_to_return = Some(candidate_move);
             };
 
             self.legal_move_highlights = Vec::new();
             self.drag_mouse_position = None;
             self.drag_state = DragState::None;
+            return move_to_return;
         }
+        None
     }
 
     fn is_legal_promotion_attempt(
@@ -529,7 +706,7 @@ impl Board {
         promotion: Option<PieceKind>,
     ) -> Move {
         let (start, end) = (origin.to_usize(), target.to_usize());
-        // need to implement promotion choice
+
         let target_square_occupant = game_state
             .bitboards
             .piece_at_square(end)

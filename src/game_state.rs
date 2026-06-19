@@ -3,6 +3,7 @@ use crate::constants::*;
 use crate::mechanics::*;
 use arrayvec::ArrayVec;
 use macroquad::prelude::*;
+use std::fmt::Display;
 
 #[derive(Clone)]
 pub struct GameState {
@@ -718,6 +719,16 @@ pub enum GameEnding {
     WhiteWins,
     BlackWins,
     Draw,
+}
+
+impl Display for GameEnding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GameEnding::WhiteWins => write!(f, "White wins."),
+            GameEnding::BlackWins => write!(f, "Black wins."),
+            GameEnding::Draw => write!(f, "The game is a draw."),
+        }
+    }
 }
 
 // game endings

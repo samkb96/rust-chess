@@ -1,5 +1,6 @@
 use crate::game_state::*;
 use macroquad::prelude::*;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::evaluators::{NullEvaluator, PieceSquareTables, PieceValues};
@@ -17,15 +18,15 @@ pub enum BotVersion {
 
 macro_rules! bot {
     ($search_engine: expr, $evaluator: expr) => {
-        Bot {
+        Arc::new(Bot {
             search_engine: Box::new($search_engine),
             evaluator: Box::new($evaluator),
-        }
+        })
     };
 }
 
 impl BotVersion {
-    pub fn to_bot(&self) -> Bot {
+    pub fn to_bot(&self) -> Arc<Bot> {
         use BotVersion as BV;
         match self {
             BV::Random => bot!(RandomSearch, NullEvaluator),
@@ -55,7 +56,7 @@ pub trait Evaluator: Send + Sync {
 }
 
 impl Bot {
-    pub fn create(argument: &str) -> Result<Self, GameModeError> {
+    pub fn create(argument: &str) -> Result<Arc<Self>, GameModeError> {
         match argument {
             "random" => Ok(BotVersion::Random.to_bot()),
             "negamax" => Ok(BotVersion::Negamax.to_bot()),
@@ -65,11 +66,10 @@ impl Bot {
         }
     }
 
-    pub fn choose_move(&self, game_state: &mut GameState) -> Option<Move> {
+    pub fn choose_move(&self, mut search_state: GameState) -> Option<Move> {
         let mut search_data = SearchData::default();
         let search_start_time = Instant::now();
         // remove the clone once it's all working
-        let mut search_state = game_state.clone();
 
         if let Some(move_choice) =
             self.search_engine
