@@ -27,6 +27,15 @@ def squares_to_bitboard(squares):
 def create_attack_boards(directions, repeats = 1):
     return [squares_to_bitboard(gen_moves(square, directions, repeats)) for square in range(64)]
 
+def union_masks(masks: list[int]) -> int:
+    return_mask = 0
+    for mask in masks:
+        return_mask = return_mask | mask
+    return return_mask
+
+def union_mask_list(mask_list: list[list[int]]) -> list[int]:
+    return [union_masks([mask[index] for mask in mask_list]) for index in range(64)]
+
 def generate_attack_masks():
     north = [(1, 0)]
     northeast = [(1, 1)]
@@ -44,7 +53,7 @@ def generate_attack_masks():
     king_directions = rook_directions + bishop_directions
     knight_directions = [(2, 1), (1, 2), (2, -1), (1, -2), (-2, 1), (-1, 2), (-2, -1), (-1, -2)]
 
-    return {
+    mask_dict = {
         'white_pawn_attacks': create_attack_boards(white_pawn_directions),
         'black_pawn_attacks': create_attack_boards(black_pawn_directions),
         'knight_attacks': create_attack_boards(knight_directions),
@@ -57,8 +66,34 @@ def generate_attack_masks():
         'south_ray': create_attack_boards(south, 8),
         'southwest_ray': create_attack_boards(southwest, 8),
         'west_ray': create_attack_boards(west, 8),
-        'northwest_ray': create_attack_boards(northwest, 8)
+        'northwest_ray': create_attack_boards(northwest, 8),
     }
+
+    bishop_direction_names = [
+        'northeast_ray', 
+        'southeast_ray', 
+        'southwest_ray', 
+        'northwest_ray'
+    ]
+    rook_direction_names = [
+        'north_ray', 
+        'east_ray', 
+        'south_ray', 
+        'west_ray'
+    ]
+    queen_direction_names = bishop_direction_names + rook_direction_names
+
+    mask_dict['bishop_masks'] = union_mask_list(
+        [mask_dict[direction_name] for direction_name in bishop_direction_names]
+    )
+    mask_dict['rook_masks'] = union_mask_list(
+        [mask_dict[direction_name] for direction_name in rook_direction_names]
+    )
+    mask_dict['queen_masks'] = union_mask_list(
+        [mask_dict[direction_name] for direction_name in queen_direction_names]
+    )
+    return mask_dict
+
 
 ### ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ PARTIAL MASKS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # precompute masks between pieces to avoid looping over squares on rays in pin/check logic
@@ -170,4 +205,4 @@ def write_attack_masks(filename):
         f.write('\n\n// exclusive partial masks \n\n')
         f.write(format_double_array('MASK_UP_TO_EXCLUSIVE', exclusive_partial_masks))
 
-write_attack_masks('src/attack_masks/masks.rs')
+write_attack_masks('src/constants/masks.rs')

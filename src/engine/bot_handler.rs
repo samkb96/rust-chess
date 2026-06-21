@@ -1,11 +1,12 @@
 use crate::game_state::*;
 use macroquad::prelude::*;
 use std::sync::Arc;
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use crate::engine::evaluators::{NullEvaluator, PieceSquareTables, PieceValues};
-use crate::modes::mode_selection::GameModeError;
 use crate::engine::search_engines::{AlphaBetaPruning, Negamax, RandomSearch};
+use crate::modes::mode_selection::GameModeError;
 
 pub type Evaluation = i32;
 
@@ -31,7 +32,7 @@ impl BotVersion {
         match self {
             BV::Random => bot!(RandomSearch, NullEvaluator),
             BV::Negamax => bot!(Negamax { depth: 3 }, PieceValues),
-            BV::AlphaBeta => bot!(AlphaBetaPruning { depth: 4 }, PieceValues),
+            BV::AlphaBeta => bot!(AlphaBetaPruning { depth: 3 }, PieceValues),
             BV::PieceSquareTable => bot!(AlphaBetaPruning { depth: 5 }, PieceSquareTables),
         }
     }
@@ -48,11 +49,18 @@ pub trait SearchEngine: Send + Sync {
         search_state: &mut GameState,
         search_data: &mut SearchData,
         evaluator: &dyn Evaluator,
+        time_remaining: Seconds,
     ) -> Option<Move>;
 }
 
 pub trait Evaluator: Send + Sync {
     fn evaluate(&self, search_state: &GameState, search_data: &mut SearchData) -> Evaluation;
+}
+
+#[derive(Default)]
+pub struct SearchThreadHandler {
+    pub bot_thread: Option<JoinHandle<Option<Move>>>,
+    pub waiting_for_bot: bool,
 }
 
 impl Bot {
@@ -66,17 +74,23 @@ impl Bot {
         }
     }
 
-    pub fn choose_move(&self, mut search_state: GameState) -> Option<Move> {
+    pub fn choose_move(
+        &self,
+        mut search_state: GameState,
+        time_remaining: Seconds,
+    ) -> Option<Move> {
         let mut search_data = SearchData::default();
         let search_start_time = Instant::now();
         // remove the clone once it's all working
 
-        if let Some(move_choice) =
-            self.search_engine
-                .search(&mut search_state, &mut search_data, &*self.evaluator)
-        {
+        if let Some(move_choice) = self.search_engine.search(
+            &mut search_state,
+            &mut search_data,
+            &*self.evaluator,
+            time_remaining,
+        ) {
             search_data.time_taken = search_start_time.elapsed();
-            //search_data.log_search_results();
+            search_data.log_search_results();
             return Some(move_choice);
         }
 

@@ -6,6 +6,19 @@ pub mod fen_positions {
     pub const QGD_MIDGAME: &str =
         "rnbqkb1r/ppp2ppp/5n2/3pp3/2PP4/2N5/PPP2PPP/R1BQKBNR w KQkq - 1 4";
     pub const MATE_IN_FOUR: &str = "6k1/5ppp/8/4Q3/8/1B6/4K3/8 w - - 0 1";
+
+    pub const AGGREGATE_TESTS: [&str; 10] = [
+        "r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1",
+        "rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3",
+        "8/P5k1/8/8/8/8/6K1/8 w - - 0 1",
+        "r1bqkb1r/pppppppp/2n2n2/8/8/2N2N2/PPPPPPPP/R1BQK2R w KQkq - 0 1",
+        "r1bqkb1r/pppppppp/2n2n2/8/3P4/2N5/PPP1PPPP/R1BQK1NR w KQkq - 0 1",
+        "rnbqkb1r/pppppppp/5n2/8/3PP3/8/PPP2PPP/RNBQKBNR w KQkq - 0 1",
+        "r1bqkbnr/pppppppp/2n5/8/3P4/8/PPP1PPPP/RNBQKBNR w KQkq - 0 1",
+        "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+        "r1bqk2r/pp2nppp/2np1n2/3p4/2PPp3/2N1PN2/PPP1B1PP/R1BQK2R w KQkq - 0 1",
+        "8/PPPPPPPk/8/8/8/8/6K1/8 w - - 0 1",
+    ];
 }
 // arrays for looping over pieces & colour
 pub const PIECE_ID_TO_FEN: [char; 6] = ['p', 'n', 'b', 'r', 'q', 'k'];
@@ -17,7 +30,12 @@ pub const PIECE_KINDS: [PieceKind; 6] = [
     PieceKind::Queen,
     PieceKind::King,
 ];
+pub const SLIDERS: [PieceKind; 3] = [PieceKind::Bishop, PieceKind::Rook, PieceKind::Queen];
+
 pub const PIECE_COLOURS: [PieceColour; 2] = [PieceColour::White, PieceColour::Black];
+
+pub const LIGHT_SQUARES: u64 = 0x55AA55AA55AA55AAu64;
+pub const DARK_SQUARES: u64 = 0xAA55AA55AA55AA55u64;
 
 // relevant squares for castling
 // (obstructible_squares[colour][side], vulnerable_squares[colour_side])

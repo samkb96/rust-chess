@@ -1,4 +1,3 @@
-
 // opening suite is just a bunch of AI nonsense at the moment
 // TODO write something to interface with lichess master database api
 // maybe get evals from stockfish too

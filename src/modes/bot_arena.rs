@@ -1,9 +1,13 @@
-use crate::engine::bot_handler::Bot;
-use crate::game_state::{GameEnding, GameState};
 use crate::constants::start_fens::TEST_POSITIONS_SUITE;
+use crate::engine::bot_handler::Bot;
+use crate::game_state::Clock;
+use crate::game_state::{GameEnding, GameState};
+
 use libm::{erf, sqrt};
 use std::cmp::Ordering;
 use std::fmt::Display;
+use std::sync::Arc;
+use std::time::Instant;
 
 #[derive(Default)]
 struct ArenaResult {
@@ -63,13 +67,13 @@ impl Display for ArenaResult {
     }
 }
 
-pub fn bot_arena(white: &Bot, black: &Bot) {
+pub fn bot_arena(white: &Arc<Bot>, black: &Arc<Bot>) {
     use GameOrientation as O;
     let mut arena_result = ArenaResult::default();
 
     println!("Commencing arena");
 
-    for (idx, position_fen) in TEST_POSITIONS_SUITE.iter().enumerate() {
+    for (idx, position_fen) in TEST_POSITIONS_SUITE[1..].iter().enumerate() {
         if idx > 0 {
             println!("{arena_result}")
         }
@@ -85,34 +89,64 @@ pub fn bot_arena(white: &Bot, black: &Bot) {
     println!("{arena_result}")
 }
 
-fn play_bot_game(position_fen: &str, white: &Bot, black: &Bot) -> GameEnding {
+fn play_bot_game(position_fen: &str, white: &Arc<Bot>, black: &Arc<Bot>) -> GameEnding {
     let mut game_state = GameState::from_fen(position_fen);
+    let mut clock = Clock::new(30.0, 1.0);
 
     loop {
+        if let Some(out_of_time_ending) = game_state.out_of_time_ending(&clock) {
+            println!("Out of time!");
+            dbg!(clock);
+            dbg!(out_of_time_ending);
+            return out_of_time_ending;
+        };
+
         if let Some(finished_after_white) =
-            make_move_and_check_for_game_over(&mut game_state, white)
+            make_move_and_check_for_game_over(&mut game_state, white, &mut clock)
         {
             return finished_after_white;
-        }
+        };
+
         if let Some(finished_after_black) =
-            make_move_and_check_for_game_over(&mut game_state, black)
+            make_move_and_check_for_game_over(&mut game_state, black, &mut clock)
         {
             return finished_after_black;
-        }
+        };
     }
 }
 
-fn make_move_and_check_for_game_over(game_state: &mut GameState, bot: &Bot) -> Option<GameEnding> {
+fn make_move_and_check_for_game_over(
+    game_state: &mut GameState,
+    bot: &Arc<Bot>,
+    clock: &mut Clock,
+) -> Option<GameEnding> {
     let search_state = game_state.clone();
-    if let Some(move_to_make) = bot.choose_move(search_state) {
+    let side_to_move = game_state.side_to_move;
+    let time_remaining = clock.time_remaining(side_to_move);
+
+    let thinking_start_time = Instant::now();
+    let maybe_move = bot.choose_move(search_state, time_remaining);
+    let thinking_time = thinking_start_time.elapsed();
+
+    if let Some(move_to_make) = maybe_move {
+        // check if out of time before incrementing back up
+        clock.update(side_to_move, thinking_time);
+        game_state.out_of_time_ending(clock);
+
         game_state.make_move(move_to_make);
+        clock.increment(side_to_move);
     } else {
-        panic!("Should have been able to find a move")
+        panic!("Couldn't choose a move");
     }
 
     let legal_moves = game_state.legal_moves();
-
-    game_state.is_game_over(&legal_moves)
+    if legal_moves.is_empty() {
+        let end_state = game_state.is_game_over(&legal_moves);
+        dbg!(end_state);
+        end_state
+    } else {
+        None
+    }
 }
 
 enum GameOrientation {

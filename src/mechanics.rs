@@ -1,6 +1,6 @@
 use crate::constants::masks::*;
 use crate::constants::misc::*;
-use crate::movegen::{MoveType};
+use crate::movegen::MoveType;
 use arrayvec::ArrayString;
 use macroquad::prelude::*;
 
@@ -12,6 +12,7 @@ pub struct BitBoards {
     pub white_pieces: BitBoard,
     pub black_pieces: BitBoard,
     pub occupied: BitBoard,
+    pub attacked_by: [[BitBoard; 6]; 2],
     pub attacked_by_white: BitBoard,
     pub attacked_by_black: BitBoard,
 }
@@ -168,8 +169,9 @@ impl BitBoards {
         }
     }
 }
+
 impl BitBoards {
-    fn pawn_attacks(&self, piece_colour: PieceColour) -> BitBoard {
+    pub fn pawn_attacks(&self, piece_colour: PieceColour) -> BitBoard {
         let mut current_pawn_attack_masks = 0u64;
         let mut pawns = self.pieces[piece_colour as usize][0];
         let individual_attack_masks = match piece_colour {
@@ -183,7 +185,7 @@ impl BitBoards {
         current_pawn_attack_masks
     }
 
-    fn knight_attacks(&self, piece_colour: PieceColour) -> BitBoard {
+    pub fn knight_attacks(&self, piece_colour: PieceColour) -> BitBoard {
         let mut current_knight_attack_masks = 0u64;
         let mut knights = self.pieces[piece_colour as usize][1];
 
@@ -193,7 +195,7 @@ impl BitBoards {
         current_knight_attack_masks
     }
 
-    fn king_attacks(&self, piece_colour: PieceColour) -> BitBoard {
+    pub fn king_attacks(&self, piece_colour: PieceColour) -> BitBoard {
         let king_bb = self.pieces[piece_colour as usize][5];
 
         assert_eq!(
@@ -206,7 +208,7 @@ impl BitBoards {
         KING_ATTACKS[king_position]
     }
 
-    fn directional_attacks(
+    pub fn directional_attacks(
         &self,
         slider_locations: BitBoard,
         slider_colour: usize,
@@ -233,7 +235,7 @@ impl BitBoards {
         current_slider_attack_masks
     }
 
-    fn slider_attacks(&self, piece_kind: usize, piece_colour: PieceColour) -> BitBoard {
+    pub fn slider_attacks(&self, piece_kind: usize, piece_colour: PieceColour) -> BitBoard {
         let mut current_slider_attack_masks = 0u64;
         let sliders = self.pieces[piece_colour as usize][piece_kind];
         let directions = match piece_kind {
@@ -252,17 +254,25 @@ impl BitBoards {
         current_slider_attack_masks
     }
 
-    fn all_attacked_squares(&self, piece_colour: PieceColour) -> BitBoard {
+    pub fn all_attacked_squares(&mut self, piece_colour: PieceColour) -> BitBoard {
+        let colour = piece_colour as usize;
+
+        self.attacked_by[colour][0] = self.pawn_attacks(piece_colour);
+        self.attacked_by[colour][1] = self.knight_attacks(piece_colour);
+        self.attacked_by[colour][2] = self.slider_attacks(2, piece_colour);
+        self.attacked_by[colour][3] = self.slider_attacks(3, piece_colour);
+        self.attacked_by[colour][4] = self.slider_attacks(4, piece_colour);
+        self.attacked_by[colour][5] = self.king_attacks(piece_colour);
+
         let mut attacked_squares = 0u64;
-        attacked_squares |= self.pawn_attacks(piece_colour);
-        attacked_squares |= self.knight_attacks(piece_colour);
-        attacked_squares |= self.slider_attacks(PieceKind::Bishop as usize, piece_colour);
-        attacked_squares |= self.slider_attacks(PieceKind::Rook as usize, piece_colour);
-        attacked_squares |= self.slider_attacks(PieceKind::Queen as usize, piece_colour);
-        attacked_squares |= self.king_attacks(piece_colour);
+        for i in 0usize..=5 {
+            attacked_squares |= self.attacked_by[colour][i]
+        }
+
         attacked_squares
     }
 }
+
 // helpers
 impl BitBoards {
     fn friendly_pieces_on_ray(&self, piece_colour: PieceColour, ray: BitBoard) -> u32 {
@@ -334,72 +344,11 @@ impl BitBoards {
         None
     }
 
-    pub fn draw_attack_masks_to_screen(&self, font: &Font) {
-        let white_strings = bb_to_screen_printable_string(&self.attacked_by_white);
-        let black_strings = bb_to_screen_printable_string(&self.attacked_by_black);
-
-        draw_text_ex(
-            "White attack masks",
-            100.,
-            150.,
-            TextParams {
-                font: Some(font),
-                font_size: 20,
-                color: WHITE,
-                ..Default::default()
-            },
-        );
-
-        draw_text_ex(
-            "Black attack masks",
-            100.,
-            600.,
-            TextParams {
-                font: Some(font),
-                font_size: 20,
-                color: WHITE,
-                ..Default::default()
-            },
-        );
-
-        for (rank, line) in white_strings.iter().enumerate() {
-            for (file, ch) in line.chars().enumerate() {
-                draw_text_ex(
-                    &ch.to_string(),
-                    100. + file as f32 * 20., // X offset for columns
-                    200. + rank as f32 * 35., // Y offset for rows
-                    TextParams {
-                        font: Some(font),
-                        font_size: 20,
-                        color: WHITE,
-                        ..Default::default()
-                    },
-                );
-            }
-        }
-
-        for (rank, line) in black_strings.iter().enumerate() {
-            for (file, ch) in line.chars().enumerate() {
-                draw_text_ex(
-                    &ch.to_string(),
-                    100. + file as f32 * 20., // X offset for columns
-                    650. + rank as f32 * 35., // Y offset for rows
-                    TextParams {
-                        font: Some(font),
-                        font_size: 20,
-                        color: WHITE,
-                        ..Default::default()
-                    },
-                );
-            }
-        }
-    }
-
     pub fn get_coloured_pieces(&self, piece_colour: usize) -> BitBoard {
         match piece_colour {
             0 => self.white_pieces,
             1 => self.black_pieces,
-            _ => unreachable!("can't look up coloured pieces for non-binary digit"),
+            _ => panic!("can't look up coloured pieces for non-binary digit"),
         }
     }
 }

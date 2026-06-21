@@ -1,7 +1,7 @@
-use crate::game_state::{GameState, Move, Moves};
-use crate::mechanics::{BitBoard, Piece, PieceColour, PieceKind, pop_lsb, closest_blocker};
 use crate::constants::masks::*;
 use crate::constants::misc::CASTLING_SQUARES;
+use crate::game_state::{GameState, Move, Moves};
+use crate::mechanics::{BitBoard, Piece, PieceColour, PieceKind, closest_blocker, pop_lsb};
 use arrayvec::ArrayVec;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -252,8 +252,7 @@ impl GameState {
 
             if blockers != 0 {
                 let blocker_square = closest_blocker(direction, blockers);
-                let mut ray_up_to_blocker =
-                    ray & MASK_UP_TO_EXCLUSIVE[start][blocker_square];
+                let mut ray_up_to_blocker = ray & MASK_UP_TO_EXCLUSIVE[start][blocker_square];
 
                 // append quiet moves
                 'target_loop: while let Some(end) = pop_lsb(&mut ray_up_to_blocker) {
@@ -417,4 +416,3 @@ fn is_double_push_rank(piece_colour: PieceColour, start: usize) -> bool {
     (piece_colour == PieceColour::White) & ((8..16).contains(&start))
         | (piece_colour == PieceColour::Black) & ((48..56).contains(&start))
 }
-

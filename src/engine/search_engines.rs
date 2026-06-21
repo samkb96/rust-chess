@@ -3,9 +3,6 @@ use crate::game_state::*; // TODO narrow this
 use crate::mechanics::PieceColour;
 use rand::prelude::*; // can probably dump the random bot
 use std::ops::Neg;
-use std::thread;
-
-use std::time::Duration;
 
 pub struct RandomSearch;
 pub struct Negamax {
@@ -23,10 +20,10 @@ impl SearchEngine for RandomSearch {
         search_state: &mut GameState,
         _search_data: &mut SearchData,
         _evaluator: &dyn Evaluator,
+        _time_remaining: Seconds,
     ) -> Option<Move> {
         let legal_moves = search_state.legal_moves();
         let mut rng = rand::rng();
-        thread::sleep(Duration::from_secs(1));
         legal_moves.choose(&mut rng).copied()
     }
 }
@@ -39,6 +36,7 @@ impl SearchEngine for Negamax {
         search_state: &mut GameState,
         search_data: &mut SearchData,
         evaluator: &dyn Evaluator,
+        _time_remaining: Seconds,
     ) -> Option<Move> {
         let legal_moves = search_state.legal_moves();
         let depth = self.depth;
@@ -109,6 +107,7 @@ impl SearchEngine for AlphaBetaPruning {
         search_state: &mut GameState,
         search_data: &mut SearchData,
         evaluator: &dyn Evaluator,
+        _time_remaining: Seconds,
     ) -> Option<Move> {
         let legal_moves = search_state.legal_moves();
 
@@ -161,10 +160,12 @@ impl AlphaBetaPruning {
         let legal_moves = search_state.legal_moves();
 
         if let Some(ending_eval) = evaluate_end_of_game(search_state, &legal_moves, depth) {
+            search_data.nodes_evaluated += 1;
             return ending_eval;
         }
 
         if depth == 0 {
+            search_data.nodes_evaluated += 1;
             return evaluator.evaluate(search_state, search_data);
         }
 

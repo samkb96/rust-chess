@@ -1,12 +1,11 @@
-use crate::engine::bot_handler::*;
 use crate::constants::misc::*;
+use crate::engine::bot_handler::*;
 use crate::game_state::*;
 use crate::mechanics::*;
 use crate::movegen::MoveType;
 use macroquad::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::thread::JoinHandle;
 
 pub const WINDOW_WIDTH: f32 = SQUARE_SIZE * 10.;
 pub const WINDOW_HEIGHT: f32 = SQUARE_SIZE * 9.;
@@ -16,6 +15,7 @@ const X_OFFSET: f32 = 50.;
 const Y_OFFSET: f32 = 50.;
 
 const CLOCK_FONT_SIZE: u16 = 45;
+const CLOCK_OFFSET: f32 = 8.0;
 
 const DARK_COLOUR: Color = color_u8!(167, 128, 99, 255);
 const LIGHT_COLOUR: Color = color_u8!(238, 238, 210, 255);
@@ -34,12 +34,6 @@ pub struct Board {
     legal_move_highlights: Vec<usize>,
     last_move_highlight: Option<usize>,
     pending_promotion: Option<PendingPromotion>,
-}
-
-#[derive(Default)]
-pub struct SearchThreadHandler {
-    pub bot_thread: Option<JoinHandle<Option<Move>>>,
-    pub waiting_for_bot: bool,
 }
 
 pub type Seconds = f32;
@@ -120,7 +114,7 @@ impl Board {
         if search_thread_handler.waiting_for_bot {
             self.bot_turn(game_state, search_thread_handler, clock);
         } else {
-            Board::start_bot_thinking(game_state, bot, search_thread_handler)
+            Board::start_bot_thinking(game_state, bot, search_thread_handler, clock)
         }
     }
 
@@ -150,12 +144,14 @@ impl Board {
         game_state: &GameState,
         bot: &Arc<Bot>,
         search_thread_handler: &mut SearchThreadHandler,
+        clock: &Clock,
     ) {
         let search_state = game_state.clone();
         let bot_clone = bot.clone();
+        let time_remaining = clock.time_remaining(game_state.side_to_move);
 
         search_thread_handler.bot_thread = Some(std::thread::spawn(move || {
-            bot_clone.choose_move(search_state)
+            bot_clone.choose_move(search_state, time_remaining)
         }));
 
         search_thread_handler.waiting_for_bot = true;
@@ -208,8 +204,8 @@ impl Board {
         let black_time = format_timestring(clock.black_time_left);
 
         let x = X_OFFSET + 8.2 * SQUARE_SIZE;
-        let white_y = Y_OFFSET + 4.5 * SQUARE_SIZE - 5.0;
-        let black_y = Y_OFFSET + 4.0 * SQUARE_SIZE - 5.0;
+        let white_y = Y_OFFSET + 4.5 * SQUARE_SIZE - CLOCK_OFFSET;
+        let black_y = Y_OFFSET + 4.0 * SQUARE_SIZE - CLOCK_OFFSET;
 
         let border_size = 2.0;
 
