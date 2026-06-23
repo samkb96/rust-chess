@@ -1,3 +1,4 @@
+use bradybot::constants::magic::generate_static_magics;
 use bradybot::modes::bot_arena::bot_arena;
 use bradybot::modes::mode_selection::GameMode;
 use bradybot::modes::mode_selection::parse_args;
@@ -8,6 +9,7 @@ use std::env;
 fn main() {
     let args: &[String] = &env::args().collect::<Vec<String>>();
     let game_mode = parse_args(args).unwrap_or_else(|err| panic!("{err}"));
+    generate_static_magics();
 
     match game_mode {
         GameMode::BotArena { white, black } => bot_arena(&white, &black),

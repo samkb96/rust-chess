@@ -12,6 +12,8 @@ Cargo.lock
 *.swp
 .DS_Store
 
+.profile.json.gz
+
 svgs/
 inkscape/
 images/

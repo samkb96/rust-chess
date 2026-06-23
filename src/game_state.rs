@@ -2,8 +2,8 @@ use crate::constants::misc::{DARK_SQUARES, LIGHT_SQUARES};
 use crate::mechanics::*;
 use crate::modes::gui::BoardCoordinate;
 use crate::movegen::MoveType;
-use arrayvec::ArrayVec;
 use macroquad::prelude::*;
+use smallvec::SmallVec;
 use std::fmt::Display;
 use std::time::Duration;
 
@@ -22,7 +22,6 @@ pub struct GameState {
 #[derive(Clone)]
 pub struct PreviousState {
     pub bitboards: BitBoards,
-    pub pins_and_checkers: PinsAndCheckers,
     pub last_move: Move,
     pub castling_rights: CastlingRights,
     pub en_passant_square: Option<BitBoard>,
@@ -444,6 +443,188 @@ pub struct Move {
     pub move_type: MoveType,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+/// fast 32-bit encoding
+pub struct BitMove {
+    data: u32,
+}
+
+/// getters
+impl BitMove {
+    #[inline]
+    /// bits 0-5
+    pub fn start_square(self) -> usize {
+        (self.data & 0b111111) as usize
+    }
+
+    #[inline]
+    /// bits 6-11
+    pub fn end_square(self) -> usize {
+        ((self.data >> 6) & 0b111111) as usize
+    }
+
+    // TODO return u8 instead
+    #[inline]
+    pub fn piece_moved(self) -> PieceKind {
+        let piecekind_bits = ((self.data >> 12) & 0b111) as usize;
+        PieceKind::try_from(piecekind_bits).unwrap()
+    }
+
+    // TODO return u8 instead
+    #[inline]
+    pub fn captured(self) -> Option<PieceKind> {
+        // host none as 111, else direct piece index
+        let captured_bits = ((self.data >> 15) & 0b111) as usize;
+        if captured_bits == 0 {
+            None
+        } else {
+            Some(PieceKind::try_from(captured_bits).unwrap())
+        }
+    }
+
+    // TODO return u8 instead
+    #[inline]
+    pub fn promotion_choice(self) -> Option<PieceKind> {
+        let promotion_bits = ((self.data >> 18) & 0b111) as usize;
+        if promotion_bits == 0 {
+            None
+        } else {
+            Some(PieceKind::try_from(promotion_bits).unwrap())
+        }
+    }
+
+    #[inline]
+    pub fn move_type(self) -> MoveType {
+        let movetype_bits = ((self.data >> 21) & 0b11) as u8;
+        match movetype_bits {
+            0 => MoveType::Normal,
+            1 => MoveType::EnPassant,
+            2 => MoveType::CastleKingside,
+            3 => MoveType::CastleQueenside,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn id_moved(self) -> u8 {
+        let moving_side = ((self.data >> 23) & 0b1) as u8;
+        let moved_id = ((self.data >> 24) & 0b1111) as u8;
+        moved_id + (16 * moving_side)
+    }
+
+    #[inline]
+    pub fn id_captured(self) -> u8 {
+        let moving_side = ((self.data >> 23) & 0b1) as u8;
+        let captured_id = ((self.data >> 28) & 0b1111) as u8;
+        captured_id + (16 * moving_side)
+    }
+}
+
+/// setters
+impl BitMove {
+    // TODO everything needs rewriting to make use of smaller data without casts
+    fn from_data(
+        start_bits: u32,
+        end_bits: u32,
+        piecemoved_bits: u32,
+        targetkind_bits: u32,
+        promotion_bits: u32,
+        move_type_bits: u32,
+    ) -> Self {
+        let data = start_bits
+            | end_bits << 6
+            | piecemoved_bits << 12
+            | targetkind_bits << 15
+            | promotion_bits << 18
+            | move_type_bits << 21;
+
+        Self { data }
+    }
+
+    pub fn quiet(start: usize, end: usize, piece_moved: PieceKind) -> Self {
+        let start_bits = start as u32;
+        let end_bits = end as u32;
+        let piecemoved_bits = piece_moved as u32;
+        Self::from_data(start_bits, end_bits, piecemoved_bits, 7, 0, 0)
+    }
+
+    pub fn capture(
+        start: usize,
+        end: usize,
+        piece_moved: PieceKind,
+        target_kind: Option<PieceKind>,
+    ) -> Self {
+        let start_bits = start as u32;
+        let end_bits = end as u32;
+        let piecemoved_bits = piece_moved as u32;
+        let targetkind_bits = if let Some(target_kind) = target_kind {
+            target_kind as u32
+        } else {
+            0b111
+        };
+        Self::from_data(start_bits, end_bits, piecemoved_bits, targetkind_bits, 0, 0)
+    }
+
+    pub fn promotion(
+        start: usize,
+        end: usize,
+        promotion: PieceKind,
+        target_kind: Option<PieceKind>,
+    ) -> Self {
+        let start_bits = start as u32;
+        let end_bits = (end << 6) as u32;
+        // don't need piecekind bits as pawns are 0
+        let targetkind_bits = if let Some(target_kind) = target_kind {
+            target_kind as u32
+        } else {
+            0b111
+        };
+        let promotion_bits = promotion as u32;
+        Self::from_data(start_bits, end_bits, 0, targetkind_bits, promotion_bits, 0)
+    }
+
+    pub fn promotions(
+        start: usize,
+        end: usize,
+        target_kind: Option<PieceKind>,
+    ) -> SmallVec<[Self; 4]> {
+        let start_bits = start as u32;
+        let end_bits = end as u32;
+        // don't need piecekind bits as pawns are 0
+        let targetkind_bits = if let Some(target_kind) = target_kind {
+            target_kind as u32
+        } else {
+            0b111
+        };
+        (1u32..=4)
+            .map(|promotion_bits| {
+                Self::from_data(start_bits, end_bits, 0, targetkind_bits, promotion_bits, 0)
+            })
+            .collect()
+    }
+
+    pub fn en_passant(start: usize, end: usize) -> Self {
+        let start_bits = start as u32;
+        let end_bits = end as u32;
+        let movetype_bits = 3u32;
+        Self::from_data(start_bits, end_bits, 0, 0, 0, movetype_bits)
+    }
+
+    pub fn castling(end: usize, castling_side: MoveType) -> Self {
+        let end_bits = end as u32;
+        let start_bits = match end {
+            2 | 6 => 4u32,
+            58 | 62 => 60u32,
+            _ => unreachable!("invalid target square for castling"),
+        };
+        let movetype_bits = match castling_side {
+            MoveType::CastleKingside => 1u32,
+            MoveType::CastleQueenside => 2u32,
+            _ => unreachable!(),
+        };
+        Self::from_data(start_bits, end_bits, 5, 7, 0, movetype_bits)
+    }
+}
 impl Display for Move {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // not really proper notation. tweak this for UCI
@@ -474,7 +655,7 @@ impl Display for Move {
     }
 }
 
-pub type Moves = ArrayVec<Move, 218>;
+pub type Moves = SmallVec<[Move; 64]>;
 
 impl Move {
     pub fn quiet(start: usize, end: usize, piece_kind: PieceKind) -> Move {

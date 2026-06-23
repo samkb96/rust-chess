@@ -1,3 +1,4 @@
+use crate::constants::magic::lookup_magic;
 use crate::constants::masks::*;
 use crate::constants::misc::*;
 use crate::movegen::MoveType;
@@ -235,7 +236,7 @@ impl BitBoards {
         current_slider_attack_masks
     }
 
-    pub fn slider_attacks(&self, piece_kind: usize, piece_colour: PieceColour) -> BitBoard {
+    pub fn old_slider_attacks(&self, piece_kind: usize, piece_colour: PieceColour) -> BitBoard {
         let mut current_slider_attack_masks = 0u64;
         let sliders = self.pieces[piece_colour as usize][piece_kind];
         let directions = match piece_kind {
@@ -250,6 +251,32 @@ impl BitBoards {
         for &direction in directions {
             current_slider_attack_masks |=
                 self.directional_attacks(sliders, piece_colour as usize, direction);
+        }
+        current_slider_attack_masks
+    }
+
+    pub fn slider_attacks(&self, piece_kind: usize, piece_colour: PieceColour) -> BitBoard {
+        let mut sliders = self.pieces[piece_colour as usize][piece_kind];
+        let blockers = self.occupied;
+        let trimmed_masks = match piece_kind {
+            2 => TRIMMED_BISHOP_MASKS,
+            3 => TRIMMED_ROOK_MASKS,
+            4 => TRIMMED_QUEEN_MASKS,
+            _ => unreachable!(),
+        };
+
+        let mut current_slider_attack_masks = 0u64;
+
+        while let Some(slider_index) = pop_lsb(&mut sliders) {
+            let trimmed_mask = trimmed_masks[slider_index];
+            let blocker_configuration = trimmed_mask & blockers;
+
+            let attack_mask = lookup_magic(
+                PieceKind::try_from(piece_kind).unwrap(),
+                slider_index,
+                blocker_configuration,
+            );
+            current_slider_attack_masks |= attack_mask;
         }
         current_slider_attack_masks
     }
@@ -299,6 +326,7 @@ impl BitBoards {
 
         let pin_side_pieces = self.get_coloured_pieces(pinning_side);
         let king_square = opposing_king_bb.trailing_zeros();
+
         // if ray blocked by opposing pieces, no pins/checks to consider
 
         let ray_up_to_king = MASK_UP_TO_EXCLUSIVE[start][king_square as usize];

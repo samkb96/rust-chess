@@ -1,6 +1,7 @@
 // macroquad gui mode for ordinary games played on board between a combination of humans and bots
+use bradybot::constants::magic::generate_static_magics;
 use bradybot::constants::misc::fen_positions::*;
-
+use bradybot::constants::start_fens::TEST_POSITIONS_SUITE;
 use bradybot::engine::bot_handler::{Bot, SearchThreadHandler};
 use bradybot::game_state::*;
 use bradybot::mechanics::PieceColour;
@@ -15,6 +16,7 @@ use std::sync::Arc;
 async fn main() {
     let args: &[String] = &env::args().collect::<Vec<String>>();
     let game_mode = parse_args(args).unwrap_or_else(|err| panic!("{err}"));
+    generate_static_magics();
 
     match game_mode {
         GameMode::BotVsBot {
@@ -22,7 +24,7 @@ async fn main() {
             black,
             clock,
         } => {
-            run_gui_bot_vs_bot(START_FEN, &white, &black, clock).await;
+            run_gui_bot_vs_bot(&white, &black, clock).await;
         }
         GameMode::HumanVsBot {
             bot,
@@ -37,18 +39,15 @@ async fn main() {
     }
 }
 
-async fn run_gui_bot_vs_bot(
-    fen: &str,
-    white_bot: &Arc<Bot>,
-    black_bot: &Arc<Bot>,
-    mut clock: Clock,
-) {
+async fn run_gui_bot_vs_bot(white_bot: &Arc<Bot>, black_bot: &Arc<Bot>, mut clock: Clock) {
     request_new_screen_size(WINDOW_WIDTH, WINDOW_HEIGHT);
     let textures = PieceTextures::new().await;
     let aptos: Font = load_ttf_font("assets/fonts/aptos-light.ttf").await.unwrap();
     let veramono: Font = load_ttf_font("assets/fonts/VeraMono.ttf").await.unwrap();
 
-    let mut game_state = GameState::from_fen(fen);
+    let random_fen = TEST_POSITIONS_SUITE[fastrand::usize(..500)];
+
+    let mut game_state = GameState::from_fen(random_fen);
     let mut board = Board::initialise();
     let mut search_thread_handler = SearchThreadHandler::default();
 

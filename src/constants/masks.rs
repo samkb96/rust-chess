@@ -1,6 +1,41 @@
 use crate::mechanics::*;
 
-// attack masks
+const A_FILE: BitBoard = 72340172838076673;
+const H_FILE: BitBoard = 9259542123273814144;
+const FIRST_RANK: BitBoard = 255;
+const LAST_RANK: BitBoard = 18374686479671623680;
+
+pub const EDGES: [BitBoard; 4] = [A_FILE, H_FILE, FIRST_RANK, LAST_RANK];
+
+pub const TRIMMED_BISHOP_MASKS: [u64; 64] = trimmed_masks(BISHOP_MASKS);
+pub const TRIMMED_ROOK_MASKS: [u64; 64] = trimmed_masks(ROOK_MASKS);
+pub const TRIMMED_QUEEN_MASKS: [u64; 64] = trimmed_masks(QUEEN_MASKS);
+
+pub const fn trim_mask(unblocked_mask: BitBoard, square_index: usize) -> BitBoard {
+    let mut trimmed_mask = unblocked_mask;
+    let mask_with_start_point = unblocked_mask | 1 << square_index;
+
+    // trim the edge of the mask, since capturable enemy / empty are same thing from blocking pov
+    let mut i = 0;
+    while i < 4 {
+        let edge = EDGES[i];
+        if mask_with_start_point & edge != edge {
+            trimmed_mask &= !edge;
+        } // if we're a rook pointing at the whole edge, don't trim
+        i += 1
+    }
+    trimmed_mask
+}
+
+const fn trimmed_masks(attack_masks: [BitBoard; 64]) -> [BitBoard; 64] {
+    let mut i = 0;
+    let mut trimmed_masks = [0u64; 64];
+    while i < 64 {
+        trimmed_masks[i] = trim_mask(attack_masks[i], i);
+        i += 1;
+    }
+    trimmed_masks
+}
 
 // attacks and directions
 // 0-3 are increasing along the ray; 4-7 decreasing

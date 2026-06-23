@@ -19,11 +19,16 @@ arena *args:
 perft *args:
     cargo run --release --bin cli -- perft {{args}}
 
-# default perft from usual start position, with all the base compiler optimisations. last check: 4.8m nps
+# default perft from usual start position, with all the base compiler optimisations. last check: 4.8m nps from first fen
 movegen:
-    cargo run --release --bin cli -- perft rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1 6
+    # start
+    cargo run --release --bin cli -- perft rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 6
+    # middlegame
+    cargo run --release --bin cli -- perft r1bqkb1r/pppp1ppp/2n2n2/4p3/3PP3/2N2N2/PPP2PPP/R1BQKB1R w KQkq - 1 8 5
+    # endgame
+    cargo run --release --bin cli -- perft 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1 7
 
-# perft without sliders. last check: 8.8m nps
+# perft without sliders. last check: 9.2m nps
 movegen_nosliders:
     cargo run --release --bin cli -- perft 1n2k1n1/pppppppp/8/8/8/8/PPPPPPPP/1N2K1N1 w - - 0 1 6
 

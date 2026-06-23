@@ -1,4 +1,7 @@
-use crate::constants::masks::{BISHOP_MASKS, KNIGHT_ATTACKS, QUEEN_MASKS, ROOK_MASKS};
+use crate::constants::magic::lookup_magic;
+use crate::constants::masks::{
+    KNIGHT_ATTACKS, TRIMMED_BISHOP_MASKS, TRIMMED_QUEEN_MASKS, TRIMMED_ROOK_MASKS
+};
 use crate::constants::misc::{PIECE_COLOURS, SLIDERS};
 use crate::game_state::{GameState, Move, PreviousState};
 use crate::mechanics::{PieceColour, PieceKind};
@@ -9,34 +12,11 @@ fn initialise_recalculated() -> Recalculated {
     [[false; 6]; 2]
 }
 
-/*
-pub struct GameState {
-    pub bitboards: BitBoards,
-    pub pins_and_checkers: PinsAndCheckers,
-    pub side_to_move: PieceColour,
-    pub castling_rights: CastlingRights,
-    pub en_passant_square: Option<BitBoard>,
-    pub halfmove_clock: u16,
-    pub fullmove_number: u16,
-    pub previous_state: StateCache,
-}
-
-#[derive(Clone)]
-pub struct PreviousState {
-    pub last_move: Move,
-    pub castling_rights: CastlingRights,
-    pub en_passant_square: Option<BitBoard>,
-    pub halfmove_clock: u16,
-    pub bitboards: BitBoards,
-}
-     */
-
 impl GameState {
     pub fn make_move(&mut self, move_to_make: Move) {
         // first cache state
         self.previous_state.push(PreviousState {
             bitboards: self.bitboards.clone(),
-            pins_and_checkers: self.pins_and_checkers.clone(),
             last_move: move_to_make,
             castling_rights: self.castling_rights,
             en_passant_square: self.en_passant_square,
@@ -56,11 +36,13 @@ impl GameState {
             .expect("Calling unmake move with empty cache");
 
         self.bitboards = previous_state.bitboards;
-        self.pins_and_checkers = previous_state.pins_and_checkers;
         self.side_to_move = self.side_to_move.flip();
+        self.pins_and_checkers = self.bitboards.get_pins_and_checks(self.side_to_move);
+
         self.castling_rights = previous_state.castling_rights;
         self.en_passant_square = previous_state.en_passant_square;
         self.halfmove_clock = previous_state.halfmove_clock;
+
         if self.side_to_move == PieceColour::Black {
             self.fullmove_number -= 1 // should only decrement if we're unmaking black's move
         }
@@ -221,27 +203,30 @@ impl GameState {
 
     fn is_slider_in_view(
         &self,
-        piece_kind: PieceKind,
+        slider_kind: PieceKind,
         piece_colour: PieceColour,
         square_index: usize,
     ) -> bool {
-        // don't bother with finding blockers for now
-        // likely not saving enough recalc time to be worth it
-        // probably a good idea once magic bitboards are set up though
+        // test whether a slider can see the king by imagining the king is a slider of the same type, and testing if it sees the slider
 
-        let sliders_to_check = self.bitboards.pieces[piece_colour as usize][piece_kind as usize];
+        let sliders_to_check = self.bitboards.pieces[piece_colour as usize][slider_kind as usize];
+
         if sliders_to_check == 0 {
             return false;
         }; // don't bother with the rest if there are none on the board
 
-        let mask_from_square = match piece_kind {
-            PieceKind::Bishop => BISHOP_MASKS[square_index],
-            PieceKind::Rook => ROOK_MASKS[square_index],
-            PieceKind::Queen => QUEEN_MASKS[square_index],
-            _ => unreachable!("only called on sliders"),
+        let trimmed_mask = match slider_kind {
+            PieceKind::Bishop => TRIMMED_BISHOP_MASKS[square_index],
+            PieceKind::Rook => TRIMMED_ROOK_MASKS[square_index],
+            PieceKind::Queen => TRIMMED_QUEEN_MASKS[square_index],
+            _ => unreachable!()
         };
 
-        (sliders_to_check & mask_from_square) != 0
+        let blocker_config = self.bitboards.occupied & trimmed_mask;
+        let attack_mask = lookup_magic(PieceKind::Queen, square_index, blocker_config);
+
+
+        (sliders_to_check & attack_mask) != 0
     }
 
     fn update_sliders_in_view_of_square(
@@ -252,12 +237,15 @@ impl GameState {
         for slider_kind in SLIDERS {
             for colour in PIECE_COLOURS {
                 if recalculated[colour as usize][slider_kind as usize] {
-                    continue;
+                    continue; // skip if already updated
                 }
-                let in_view = self.is_slider_in_view(slider_kind, colour, square);
 
-                if !in_view {
-                    continue;
+                if self.bitboards.pieces[colour as usize][slider_kind as usize] == 0 {
+                    continue; // none on the board to recalculate
+                }
+
+                if !self.is_slider_in_view(slider_kind, colour, square) {
+                    continue; // none in view of square
                 }
 
                 recalculated = self.conditional_attack_recalc(slider_kind, colour, recalculated);
@@ -272,13 +260,21 @@ impl GameState {
         mut recalculated: Recalculated,
     ) -> Recalculated {
         let colour = self.side_to_move;
-        for slider_kind in SLIDERS {
+        for slider_kind in [PieceKind::Rook, PieceKind::Queen] {
+            // bishops' attack masks never modified by castling
+
             if recalculated[colour as usize][slider_kind as usize] {
                 continue;
-            } // only ever hit with rooks
+            }
+
+            if self.bitboards.pieces[colour as usize][slider_kind as usize] == 0 {
+                continue; // none on the board to recalculate
+            }
+
             if !self.is_slider_in_view(slider_kind, colour, square) {
                 continue;
             }
+
             recalculated = self.conditional_attack_recalc(slider_kind, colour, recalculated)
         }
         recalculated

@@ -1,6 +1,7 @@
 use crate::constants::misc::psts::{
     BISHOP_PST, KING_PST, KNIGHT_PST, PAWN_PSTS, QUEEN_PST, ROOK_PST,
 };
+use crate::constants::misc::{ADJACENT_FILES, FILES};
 use crate::engine::bot_handler::{Evaluation, Evaluator, SearchData};
 use crate::game_state::*;
 use crate::mechanics::{PieceColour, pop_lsb};
@@ -8,6 +9,7 @@ use crate::mechanics::{PieceColour, pop_lsb};
 pub struct NullEvaluator;
 pub struct PieceValues;
 pub struct PieceSquareTables;
+pub struct PawnStructure;
 //
 // -------------------------------------------------------- version 0 --------------------------------------------------------
 //
@@ -92,4 +94,69 @@ fn piece_square_eval(search_state: &GameState, piece: usize, colour: usize) -> E
     }
 
     pst_score
+}
+//
+// -------------------------------------------------------- version 3 --------------------------------------------------------
+//
+impl Evaluator for PawnStructure {
+    fn evaluate(&self, search_state: &GameState, _search_data: &mut SearchData) -> Evaluation {
+        let piece_value_eval = piece_values(search_state);
+        let piece_square_eval = get_piece_square_evals(search_state);
+        let isolated_pawn_eval = ISOLATION_WEIGHTING * count_isolated_pawns(search_state);
+        let doubled_pawn_eval = DOUBLED_WEIGHTING * count_doubled_pawns(search_state);
+        let eval = piece_value_eval + piece_square_eval + isolated_pawn_eval + doubled_pawn_eval;
+
+        match search_state.side_to_move {
+            PieceColour::White => eval,
+            PieceColour::Black => -eval,
+        }
+    }
+}
+
+const ISOLATION_WEIGHTING: Evaluation = -25;
+const DOUBLED_WEIGHTING: Evaluation = -10;
+
+fn count_isolated_pawns(search_state: &GameState) -> Evaluation {
+    let white_pawns = search_state.bitboards.pieces[0][0];
+    let black_pawns = search_state.bitboards.pieces[1][0];
+    let all_pawns = white_pawns | black_pawns;
+
+    let mut count: Evaluation = 0;
+
+    for file_index in 0usize..8 {
+        let file = FILES[file_index];
+
+        if all_pawns & file == 0 {
+            continue; // don't bother testing if neither side has any on this file
+        }
+
+        let adjacent_files = ADJACENT_FILES[file_index];
+
+        if adjacent_files & white_pawns == 0 {
+            count += (file & white_pawns).count_ones() as i32
+        }
+
+        if adjacent_files & black_pawns == 0 {
+            count -= (file & black_pawns).count_ones() as i32
+        }
+    }
+
+    count
+}
+
+fn count_doubled_pawns(search_state: &GameState) -> Evaluation {
+    let white_pawns = search_state.bitboards.pieces[0][0];
+    let black_pawns = search_state.bitboards.pieces[1][0];
+    let all_pawns = white_pawns | black_pawns;
+
+    let mut count = 0;
+
+    for file in FILES {
+        if all_pawns & file == 0 {
+            continue;
+        }
+        count += (white_pawns & file).count_ones() as Evaluation;
+        count -= (black_pawns & file).count_ones() as Evaluation;
+    }
+    count
 }

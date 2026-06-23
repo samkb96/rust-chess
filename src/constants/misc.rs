@@ -46,6 +46,37 @@ pub const CASTLING_SQUARES: ([[BitBoard; 2]; 2], [[BitBoard; 2]; 2]) = (
     [[28, 112], [2017612633061982208, 8070450532247928832]],
 );
 
+// pawn structure testing stuff
+pub const FILES: [BitBoard; 8] = get_files();
+pub const ADJACENT_FILES: [BitBoard; 8] = get_adjacent_files();
+
+const fn get_files() -> [BitBoard; 8] {
+    let a_file: BitBoard = 0x101010101010101;
+    let mut files = [0u64; 8];
+    let mut i = 0;
+    while i < 8 {
+        files[i] = a_file << i;
+        i += 1
+    }
+    files
+}
+
+const fn get_adjacent_files() -> [BitBoard; 8] {
+    // 2- or 3- file chunks to test for pawn isolation
+    let mut channels = [0u64; 8];
+    let mut i = 0;
+    while i < 8 {
+        match i {
+            0 => channels[i] = FILES[1],
+            1..=6 => channels[i] = FILES[i - 1] | FILES[i + 1],
+            7 => channels[i] = FILES[6],
+            _ => unreachable!(),
+        }
+        i += 1
+    }
+    channels
+}
+
 // piece square tables
 #[rustfmt::skip]
 pub mod psts {
@@ -57,17 +88,17 @@ pub mod psts {
             // white pawns
             0,   0,   0,   0,   0,   0,   0,   0,
 
-            0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,  -5,  -5,   0,   0,   0,
 
             0,   0,   0,   0,   0,   0,   0,   0,
-
-            0,   0,   0,   5,   5,   0,   0,   0,
 
             0,   0,   5,   10,  10,  5,   0,   0,
 
+            0,   0,   10,  15,  15,  10,  0,   0,
+
             5,   5,   10,  15,  15,  10,  5,   5,
 
-            5,   5,   5,   10,  10,  5,   5,   5,
+            5,   10,  15,  20,  20,  15,  10,  5,
 
             0,   0,   0,   0,   0,   0,   0,   0
         ],
@@ -76,17 +107,17 @@ pub mod psts {
         [
             0,   0,   0,   0,   0,   0,   0,   0,
 
-            5,   5,   5,   10,  10,  5,   5,   5,
+            5,   10,  15,  20,  20,  15,  10,   5,
 
             5,   5,   10,  15,  15,  10,  5,   5,
 
+            0,   0,   10,  15,  15,  10,   0,   0,
+
             0,   0,   5,   10,  10,  5,   0,   0,
 
-            0,   0,   0,   5,   5,   0,   0,   0,
-
             0,   0,   0,   0,   0,   0,   0,   0,
 
-            0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,  -5,  -5,   0,   0,   0,
 
             0,   0,   0,   0,   0,   0,   0,   0
         ],

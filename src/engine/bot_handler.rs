@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use crate::engine::evaluators::{NullEvaluator, PieceSquareTables, PieceValues};
+use crate::engine::evaluators::{NullEvaluator, PawnStructure, PieceSquareTables, PieceValues};
 use crate::engine::search_engines::{AlphaBetaPruning, Negamax, RandomSearch};
 use crate::modes::mode_selection::GameModeError;
 
@@ -15,6 +15,7 @@ pub enum BotVersion {
     Negamax,
     AlphaBeta,
     PieceSquareTable,
+    PawnStructure,
 }
 
 macro_rules! bot {
@@ -33,7 +34,8 @@ impl BotVersion {
             BV::Random => bot!(RandomSearch, NullEvaluator),
             BV::Negamax => bot!(Negamax { depth: 3 }, PieceValues),
             BV::AlphaBeta => bot!(AlphaBetaPruning { depth: 3 }, PieceValues),
-            BV::PieceSquareTable => bot!(AlphaBetaPruning { depth: 5 }, PieceSquareTables),
+            BV::PieceSquareTable => bot!(AlphaBetaPruning { depth: 4 }, PieceSquareTables),
+            BV::PawnStructure => bot!(AlphaBetaPruning { depth: 4 }, PawnStructure),
         }
     }
 }
@@ -70,6 +72,7 @@ impl Bot {
             "negamax" => Ok(BotVersion::Negamax.to_bot()),
             "alphabeta" => Ok(BotVersion::AlphaBeta.to_bot()),
             "pst" => Ok(BotVersion::PieceSquareTable.to_bot()),
+            "pawn" => Ok(BotVersion::PawnStructure.to_bot()),
             _ => Err(GameModeError::InvalidBotSelection(argument.to_string())),
         }
     }
@@ -90,7 +93,7 @@ impl Bot {
             time_remaining,
         ) {
             search_data.time_taken = search_start_time.elapsed();
-            search_data.log_search_results();
+            //search_data.log_search_results();
             return Some(move_choice);
         }
 

@@ -73,17 +73,14 @@ pub fn bot_arena(white: &Arc<Bot>, black: &Arc<Bot>) {
 
     println!("Commencing arena");
 
-    for (idx, position_fen) in TEST_POSITIONS_SUITE[1..].iter().enumerate() {
-        if idx > 0 {
-            println!("{arena_result}")
-        }
-
+    for &position_fen in TEST_POSITIONS_SUITE[1..].iter() {
         for game_orientation in [O::FirstAsWhite, O::FirstAsBlack] {
             let game_result = match game_orientation {
                 O::FirstAsWhite => play_bot_game(position_fen, white, black),
                 O::FirstAsBlack => play_bot_game(position_fen, black, white),
             };
             arena_result.record(game_result, game_orientation);
+            println!("{arena_result}")
         }
     }
     println!("{arena_result}")
@@ -140,13 +137,7 @@ fn make_move_and_check_for_game_over(
     }
 
     let legal_moves = game_state.legal_moves();
-    if legal_moves.is_empty() {
-        let end_state = game_state.is_game_over(&legal_moves);
-        dbg!(end_state);
-        end_state
-    } else {
-        None
-    }
+    game_state.is_game_over(&legal_moves)
 }
 
 enum GameOrientation {
