@@ -1,19 +1,41 @@
 use crate::constants::magic::lookup_magic;
 use crate::constants::masks::{
-    KNIGHT_ATTACKS, TRIMMED_BISHOP_MASKS, TRIMMED_QUEEN_MASKS, TRIMMED_ROOK_MASKS
+    KNIGHT_ATTACKS, TRIMMED_BISHOP_MASKS, TRIMMED_QUEEN_MASKS, TRIMMED_ROOK_MASKS,
 };
-use crate::constants::misc::{PIECE_COLOURS, SLIDERS};
 use crate::game_state::{GameState, Move, PreviousState};
+use crate::mechanics::PieceColour::*;
+use crate::mechanics::PieceKind::*;
 use crate::mechanics::{PieceColour, PieceKind};
-use crate::movegen::MoveType;
+use crate::movegen::MoveType::{self, *};
 
 type Recalculated = [[bool; 6]; 2];
 fn initialise_recalculated() -> Recalculated {
     [[false; 6]; 2]
 }
 
+// TODO rewrite everything with piece ids
+// implement to make_move and unmake_move - make sure they're in sync with the bitboards
+// then, rewrite attack mask / pins and checks to incrementally update 
+
 impl GameState {
     pub fn make_move(&mut self, move_to_make: Move) {
+        // if we're about to capture a king, print the previous position and the move that led to this position
+
+        if move_to_make.captured() == Some(PieceKind::King) {
+            // TODO remove once all the movegen stuff is done - purely here for debugging
+            self.unmake_move();
+            let legal_moves = self.legal_moves();
+            println!("King capture detected. Previous position: ");
+            display_bitboards(&self.bitboards.pieces);
+            println!("Legal moves:");
+
+            for mv in legal_moves {
+                println!("{:?}", mv);
+            }
+
+            println!("FEN: {}", self.to_fen());
+            panic!();
+        }
         // first cache state
         self.previous_state.push(PreviousState {
             bitboards: self.bitboards.clone(),
@@ -43,33 +65,38 @@ impl GameState {
         self.en_passant_square = previous_state.en_passant_square;
         self.halfmove_clock = previous_state.halfmove_clock;
 
-        if self.side_to_move == PieceColour::Black {
+        if self.side_to_move == Black {
             self.fullmove_number -= 1 // should only decrement if we're unmaking black's move
         }
     }
 
     pub fn update_internal_state_params(&mut self, move_made: Move) {
+        let start_square = move_made.start_square();
+        let end_square = move_made.end_square();
+        let piece_moved = move_made.piece_moved();
+        let captured = move_made.captured();
+
         // if move not capture & not pawn move, add 1 to halfmove clock
-        if move_made.captured.is_none() & !(move_made.piece_moved == PieceKind::Pawn) {
+        if (captured.is_none()) & (piece_moved != Pawn) {
             self.halfmove_clock += 1;
         }
 
         // castling rights lost if rook moves, king moves, rook captured
-        if move_made.piece_moved == PieceKind::King {
+        if piece_moved == King {
             match self.side_to_move {
-                PieceColour::White => {
+                White => {
                     self.castling_rights.white_kingside = false;
                     self.castling_rights.white_queenside = false;
                 }
-                PieceColour::Black => {
+                Black => {
                     self.castling_rights.black_kingside = false;
                     self.castling_rights.black_queenside = false;
                 }
             }
         }
 
-        if move_made.piece_moved == PieceKind::Rook {
-            match move_made.start_square {
+        if piece_moved == Rook {
+            match start_square {
                 0 => {
                     self.castling_rights.white_queenside = false;
                 }
@@ -87,8 +114,9 @@ impl GameState {
         }
 
         // not super slick but works
-        if move_made.captured.unwrap_or(PieceKind::Pawn) == PieceKind::Rook {
-            match move_made.end_square {
+
+        if captured == Some(Rook) {
+            match end_square {
                 0 => {
                     self.castling_rights.white_queenside = false;
                 }
@@ -106,12 +134,11 @@ impl GameState {
         }
 
         // en passant square
-        if move_made.piece_moved == PieceKind::Pawn {
-            let (start, end) = (move_made.start_square, move_made.end_square);
+        if piece_moved == Pawn {
             // should only be true if pawn has moved two squares
-            if end.abs_diff(start) == 16 {
+            if end_square.abs_diff(start_square) == 16 {
                 // set en_passant_square to be the midpoint of the start and end moves
-                self.en_passant_square = Some(1u64 << ((start + end) / 2))
+                self.en_passant_square = Some(1u64 << ((start_square + end_square) / 2))
             } else {
                 self.en_passant_square = None
             }
@@ -121,12 +148,12 @@ impl GameState {
 
         // pass turn over & update fullmove_number if black has just moved
         match self.side_to_move {
-            PieceColour::White => {
-                self.side_to_move = PieceColour::Black;
+            White => {
+                self.side_to_move = Black;
             }
-            PieceColour::Black => {
+            Black => {
                 self.fullmove_number += 1;
-                self.side_to_move = PieceColour::White;
+                self.side_to_move = White;
             }
         }
 
@@ -145,42 +172,39 @@ impl GameState {
     }
 
     fn update_position_bitboards(&mut self, move_to_make: Move) {
-        let start_bitboard = 1u64 << move_to_make.start_square;
-        let end_bitboard = 1u64 << move_to_make.end_square;
+        let start_bitboard = 1u64 << move_to_make.start_square();
+        let end_bitboard = 1u64 << move_to_make.end_square();
 
-        let piece_moved = move_to_make.piece_moved;
+        let piece_moved = move_to_make.piece_moved();
+        let captured = move_to_make.piece_moved();
+
         let colour_moved = self.side_to_move;
-
-        let move_type = move_to_make.move_type;
+        let move_type = move_to_make.move_type();
 
         // remove piece at start
         self.bitboards.pieces[colour_moved as usize][piece_moved as usize] ^= start_bitboard;
 
-        if let Some(captured) = move_to_make.captured
-            && move_type == MoveType::Normal
+        if let Some(captured) = move_to_make.captured()
+            && move_type == Normal
         {
             // remove captured piece
+
             self.bitboards.pieces[1 - (colour_moved as usize)][captured as usize] ^= end_bitboard;
         }
 
-        if move_to_make.promotion.is_none() {
-            // place piece
-            self.bitboards.pieces[colour_moved as usize][piece_moved as usize] ^= end_bitboard;
-        } else {
-            // add promoted piece
-            let promotion_piece = move_to_make
-                .promotion
-                .expect("Non-promotion move snuck into promotion logic");
+        if let Some(promotion_piece) = move_to_make.promotion_choice() {
             self.bitboards.pieces[colour_moved as usize][promotion_piece as usize] ^= end_bitboard;
+        } else {
+            self.bitboards.pieces[colour_moved as usize][piece_moved as usize] ^= end_bitboard;
         }
 
-        if [MoveType::CastleKingside, MoveType::CastleQueenside].contains(&move_type) {
+        if [CastleKingside, CastleQueenside].contains(&move_type) {
             // implement the rook move
             let (rook_start, rook_end) = match (colour_moved, move_type) {
-                (PieceColour::White, MoveType::CastleKingside) => (7, 5),
-                (PieceColour::Black, MoveType::CastleKingside) => (63, 61),
-                (PieceColour::White, MoveType::CastleQueenside) => (0, 3),
-                (PieceColour::Black, MoveType::CastleQueenside) => (56, 59),
+                (PieceColour::White, CastleKingside) => (7, 5),
+                (PieceColour::Black, CastleKingside) => (63, 61),
+                (PieceColour::White, CastleQueenside) => (0, 3),
+                (PieceColour::Black, CastleQueenside) => (56, 59),
                 _ => unreachable!("Non-castling move snuck into castling logic"),
             };
 
@@ -189,15 +213,15 @@ impl GameState {
             self.bitboards.pieces[colour_moved as usize][PieceKind::Rook as usize] ^= rook_move_bb;
         };
 
-        if move_type == MoveType::EnPassant {
-            // square to remove pawn from is the location of the double push
-            // so 1 rank behind en_passant_square if white captures
-            let captured_pawn_square = match colour_moved {
-                PieceColour::White => self.en_passant_square.unwrap() >> 8,
-                PieceColour::Black => self.en_passant_square.unwrap() << 8,
-            };
+        if move_type == EnPassant {
+            // en passant
+            // pawn to remove is on file of start square + rank of end
+            let start_rank = move_to_make.start_square() & 0xF8; // 00000111
+            let end_file = move_to_make.end_square() & 0x7; // 11111000
+            let captured_pawn_bit = 1 << (start_rank | end_file);
+
             // remove captured pawn from opposition bitboard
-            self.bitboards.pieces[1 - (colour_moved as usize)][0] ^= captured_pawn_square;
+            self.bitboards.pieces[colour_moved.flip() as usize][0] ^= captured_pawn_bit;
         }
     }
 
@@ -209,22 +233,21 @@ impl GameState {
     ) -> bool {
         // test whether a slider can see the king by imagining the king is a slider of the same type, and testing if it sees the slider
 
-        let sliders_to_check = self.bitboards.pieces[piece_colour as usize][slider_kind as usize];
+        let sliders_to_check = self.bitboards.get(piece_colour, slider_kind);
 
         if sliders_to_check == 0 {
             return false;
         }; // don't bother with the rest if there are none on the board
 
         let trimmed_mask = match slider_kind {
-            PieceKind::Bishop => TRIMMED_BISHOP_MASKS[square_index],
-            PieceKind::Rook => TRIMMED_ROOK_MASKS[square_index],
-            PieceKind::Queen => TRIMMED_QUEEN_MASKS[square_index],
-            _ => unreachable!()
+            Bishop => TRIMMED_BISHOP_MASKS[square_index],
+            Rook => TRIMMED_ROOK_MASKS[square_index],
+            Queen => TRIMMED_QUEEN_MASKS[square_index],
+            _ => unreachable!(),
         };
 
         let blocker_config = self.bitboards.occupied & trimmed_mask;
-        let attack_mask = lookup_magic(PieceKind::Queen, square_index, blocker_config);
-
+        let attack_mask = lookup_magic(4, square_index, blocker_config);
 
         (sliders_to_check & attack_mask) != 0
     }
@@ -234,13 +257,13 @@ impl GameState {
         square: usize,
         mut recalculated: Recalculated,
     ) -> Recalculated {
-        for slider_kind in SLIDERS {
-            for colour in PIECE_COLOURS {
+        for slider_kind in [Bishop, Rook, Queen] {
+            for colour in [White, Black] {
                 if recalculated[colour as usize][slider_kind as usize] {
                     continue; // skip if already updated
                 }
 
-                if self.bitboards.pieces[colour as usize][slider_kind as usize] == 0 {
+                if self.bitboards.get(colour, slider_kind) == 0 {
                     continue; // none on the board to recalculate
                 }
 
@@ -260,14 +283,14 @@ impl GameState {
         mut recalculated: Recalculated,
     ) -> Recalculated {
         let colour = self.side_to_move;
-        for slider_kind in [PieceKind::Rook, PieceKind::Queen] {
+        for slider_kind in [Rook, Queen] {
             // bishops' attack masks never modified by castling
 
             if recalculated[colour as usize][slider_kind as usize] {
                 continue;
             }
 
-            if self.bitboards.pieces[colour as usize][slider_kind as usize] == 0 {
+            if self.bitboards.get(colour, slider_kind) == 0 {
                 continue; // none on the board to recalculate
             }
 
@@ -285,18 +308,19 @@ impl GameState {
         move_made: Move,
         mut recalculated: Recalculated,
     ) -> Recalculated {
-        let piece_moved = move_made.piece_moved;
+        let piece_moved = move_made.piece_moved();
         let side_to_move = self.side_to_move;
-        let start_square = move_made.start_square;
-        let end_square = move_made.end_square;
+        let start_square = move_made.start_square();
+        let end_square = move_made.end_square();
 
         // recompute only the attacked_from bitboard of the piece that's moved
         recalculated = self.conditional_attack_recalc(piece_moved, side_to_move, recalculated);
 
-        if let Some(captured_piece) = move_made.captured {
+        let captured = move_made.captured();
+        if let Some(captured) = captured {
             // same match as before, but with colours reversed
             recalculated =
-                self.conditional_attack_recalc(captured_piece, side_to_move.flip(), recalculated)
+                self.conditional_attack_recalc(captured, side_to_move.flip(), recalculated)
         }
 
         // indirectly involved pieces (ie blocked/unblocked sliders)
@@ -315,15 +339,15 @@ impl GameState {
         end_square: usize,
         recalculated: Recalculated,
     ) {
-        use PieceKind as K;
         let side_to_move = self.side_to_move;
 
         match promotion_choice {
-            K::Knight => {
+            Knight => {
                 let new_mask = KNIGHT_ATTACKS[end_square];
                 self.bitboards.attacked_by[side_to_move as usize][1] |= new_mask
             }
-            K::Bishop | K::Rook | K::Queen => {
+            Bishop | Rook | Queen => {
+                // sliders
                 let _ =
                     self.conditional_attack_recalc(promotion_choice, side_to_move, recalculated);
             }
@@ -337,19 +361,16 @@ impl GameState {
         side_to_move: PieceColour,
         mut recalculated: Recalculated,
     ) {
-        use MoveType as T;
-        use PieceColour as C;
-
         let affected_squares = match (side_to_move, castling_side) {
-            (C::White, T::CastleKingside) => [4, 5, 6, 7],
-            (C::White, T::CastleQueenside) => [0, 2, 3, 4],
-            (C::Black, T::CastleKingside) => [60, 61, 62, 63],
-            (C::Black, T::CastleQueenside) => [56, 58, 59, 60],
+            (White, CastleKingside) => [4, 5, 6, 7],
+            (White, CastleQueenside) => [0, 2, 3, 4],
+            (Black, CastleKingside) => [60, 61, 62, 63],
+            (Black, CastleQueenside) => [56, 58, 59, 60],
             _ => unreachable!("this function's only for castling"),
         };
 
-        recalculated = self.conditional_attack_recalc(PieceKind::King, side_to_move, recalculated);
-        recalculated = self.conditional_attack_recalc(PieceKind::Rook, side_to_move, recalculated);
+        recalculated = self.conditional_attack_recalc(King, side_to_move, recalculated);
+        recalculated = self.conditional_attack_recalc(Rook, side_to_move, recalculated);
         for square in affected_squares {
             self.update_same_side_sliders_in_view_of_square(square, recalculated);
             // opposing sliders don't need recalculation
@@ -359,14 +380,16 @@ impl GameState {
     pub fn update_aggregates(&mut self, move_made: Move) {
         let mut recalculated = initialise_recalculated();
         let side_to_move = self.side_to_move;
-        let start_square = move_made.start_square;
-        let end_square = move_made.end_square;
-        let move_type = move_made.move_type;
+        let start_square = move_made.start_square();
+        let end_square = move_made.end_square();
+        let move_type = move_made.move_type();
 
         match move_type {
-            MoveType::Normal => {
+            Normal => {
                 self.update_aggregates_for_normal_move(move_made, recalculated);
-                if let Some(promotion_choice) = move_made.promotion {
+
+                let promotion_choice = move_made.promotion_choice();
+                if let Some(promotion_choice) = promotion_choice {
                     self.update_aggregates_for_promotion(
                         promotion_choice,
                         end_square,
@@ -374,13 +397,14 @@ impl GameState {
                     );
                 }
             }
-            MoveType::EnPassant => {
+            EnPassant => {
+                // en passant
                 // basically the same process as normal move, but we need to check if any sliders are unblocked on the captured piece square too
                 recalculated = self.update_aggregates_for_normal_move(move_made, recalculated);
                 let captured_pawn_square = (start_square & 0xF8) | (end_square & 0x7); // lovely bitop. start rank & end file
                 self.update_sliders_in_view_of_square(captured_pawn_square, recalculated);
             }
-            MoveType::CastleQueenside | MoveType::CastleKingside => {
+            CastleKingside | CastleQueenside => {
                 self.update_aggregates_for_castling(move_type, side_to_move, recalculated);
             }
         }
@@ -394,25 +418,20 @@ impl GameState {
 
     fn call_piece_attack_recalc(&mut self, piece_kind: PieceKind, colour: PieceColour) {
         let u_colour = colour as usize;
+        let u_kind = piece_kind as usize;
         match piece_kind {
-            PieceKind::Pawn => {
+            Pawn => {
                 self.bitboards.attacked_by[u_colour][0] = self.bitboards.pawn_attacks(colour);
             }
-            PieceKind::Knight => {
+            Knight => {
                 self.bitboards.attacked_by[u_colour][1] = self.bitboards.knight_attacks(colour)
             }
-            PieceKind::Bishop => {
-                self.bitboards.attacked_by[u_colour][2] = self.bitboards.slider_attacks(2, colour)
+            Bishop | Rook | Queen => {
+                self.bitboards.attacked_by[u_colour][u_kind] =
+                    self.bitboards.slider_attacks(piece_kind, colour)
             }
-            PieceKind::Rook => {
-                self.bitboards.attacked_by[u_colour][3] = self.bitboards.slider_attacks(3, colour)
-            }
-            PieceKind::Queen => {
-                self.bitboards.attacked_by[u_colour][4] = self.bitboards.slider_attacks(4, colour)
-            }
-            PieceKind::King => {
-                self.bitboards.attacked_by[u_colour][5] = self.bitboards.king_attacks(colour)
-            }
+            King => self.bitboards.attacked_by[u_colour][5] = self.bitboards.king_attacks(colour),
+            _ => (),
         }
     }
 
@@ -433,4 +452,53 @@ impl GameState {
         recalculated[u_colour][u_kind] = true;
         recalculated
     }
+}
+
+fn display_bitboards(bitboards: &[[u64; 6]; 2]) {
+    println!("  a b c d e f g h");
+    for rank in (0..8).rev() {
+        print!("{} ", rank + 1);
+        for file in 0..8 {
+            let square = rank * 8 + file;
+            let square_bit = 1u64 << square;
+
+            let mut piece_char = '.';
+
+            // Check white pieces (uppercase)
+            for piece_kind in 0..6 {
+                if (bitboards[0][piece_kind] & square_bit) != 0 {
+                    piece_char = match piece_kind {
+                        0 => 'P',
+                        1 => 'N',
+                        2 => 'B',
+                        3 => 'R',
+                        4 => 'Q',
+                        5 => 'K',
+                        _ => unreachable!(),
+                    };
+                    break;
+                }
+            }
+
+            // Check black pieces (lowercase)
+            for piece_kind in 0..6 {
+                if (bitboards[1][piece_kind] & square_bit) != 0 {
+                    piece_char = match piece_kind {
+                        0 => 'p',
+                        1 => 'n',
+                        2 => 'b',
+                        3 => 'r',
+                        4 => 'q',
+                        5 => 'k',
+                        _ => unreachable!(),
+                    };
+                    break;
+                }
+            }
+
+            print!("{piece_char} ");
+        }
+        println!(" {}", rank + 1);
+    }
+    println!("  a b c d e f g h");
 }

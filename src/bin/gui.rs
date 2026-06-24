@@ -33,9 +33,45 @@ async fn main() {
         } => {
             run_gui_human_vs_bot(START_FEN, &bot, bot_colour, clock).await;
         }
+        GameMode::HumanVsHuman { fen, clock } => {
+            run_gui_human_vs_human(&fen, clock).await;
+        }
         _ => {
             panic!("incorrect binary setup")
         }
+    }
+}
+
+async fn run_gui_human_vs_human(fen: &str, mut clock: Clock) {
+    request_new_screen_size(WINDOW_WIDTH, WINDOW_HEIGHT);
+    let textures = PieceTextures::new().await;
+    let aptos: Font = load_ttf_font("assets/fonts/aptos-light.ttf").await.unwrap();
+    let veramono: Font = load_ttf_font("assets/fonts/VeraMono.ttf").await.unwrap();
+
+    let mut game_state = GameState::from_fen(fen);
+    let mut board = Board::initialise();
+
+    loop {
+        clock.tick(game_state.side_to_move);
+
+        if is_key_pressed(KeyCode::Z) {
+            game_state.unmake_move();
+        }
+
+        if kill_game() {
+            break;
+        }
+
+        clear_background(BLACK);
+
+        board.draw_human_game_to_screen(&game_state, &textures, &aptos, &clock, &veramono);
+        board.update_from_human(
+            &mut game_state,
+            mouse_position().into(),
+            &textures,
+            &mut clock,
+        );
+        next_frame().await;
     }
 }
 

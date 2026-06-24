@@ -92,7 +92,7 @@ impl Board {
     fn draw_pieces(&self, game_state: &GameState, texture: &PieceTextures) {
         for square_idx in 0..64 {
             let coord = BoardCoordinate::from_usize(square_idx);
-            if let Some(piece) = game_state.bitboards.piece_at_square(square_idx) {
+            if let Some(piece) = game_state.piece_at_square(square_idx) {
                 let skip_drawing = self.drag_state.dragging_from_square(coord);
                 if !skip_drawing {
                     coord.draw_piece_at_square(piece, texture);
@@ -131,7 +131,7 @@ impl Board {
                 if let Some(move_to_make) = maybe_move {
                     clock.increment(game_state.side_to_move);
                     game_state.make_move(move_to_make);
-                    self.last_move_highlight = Some(move_to_make.end_square);
+                    self.last_move_highlight = Some(move_to_make.end_square());
                     search_thread_handler.waiting_for_bot = false;
                 }
             } else {
@@ -382,6 +382,7 @@ impl Board {
             let piece = Piece {
                 kind,
                 colour: pending_promotion.piece.colour,
+                id: 0 // gross
             };
 
             let y_pos_base = picker_y + index as f32 * SQUARE_SIZE;
@@ -458,7 +459,7 @@ impl Board {
         // move should already be legal, checked in is_legal_promotion_attempt()
 
         game_state.make_move(candidate_move);
-        self.last_move_highlight = Some(candidate_move.end_square);
+        self.last_move_highlight = Some(candidate_move.end_square());
 
         self.pending_promotion = None;
     }
@@ -529,7 +530,7 @@ impl Board {
     ) -> Option<Move> {
         if is_mouse_button_down(MouseButton::Left) {
             if let Some(coordinate) = BoardCoordinate::mouse_pos_to_coordinate(mouse_position) {
-                if let Some(piece) = game_state.bitboards.piece_at_square(coordinate.to_usize()) {
+                if let Some(piece) = game_state.piece_at_square(coordinate.to_usize()) {
                     self.drag_state = DragState::Started {
                         piece,
                         origin: coordinate,
@@ -570,7 +571,10 @@ impl Board {
         self.drag_mouse_position = Some(mouse_position);
         let relevant_legal_moves = game_state.legal_moves_from(origin.to_usize());
 
-        self.legal_move_highlights = relevant_legal_moves.iter().map(|m| m.end_square).collect();
+        self.legal_move_highlights = relevant_legal_moves
+            .iter()
+            .map(|m| m.end_square())
+            .collect();
 
         if is_mouse_button_released(MouseButton::Left) {
             let target = BoardCoordinate::mouse_pos_to_coordinate(mouse_position).unwrap_or(origin);
@@ -601,7 +605,7 @@ impl Board {
             let candidate_move = self.candidate_move(game_state, origin, target, piece, None);
 
             if relevant_legal_moves.contains(&candidate_move) {
-                self.last_move_highlight = Some(candidate_move.end_square);
+                self.last_move_highlight = Some(candidate_move.end_square());
                 move_to_return = Some(candidate_move);
             };
 
@@ -659,7 +663,6 @@ impl Board {
         let (start, end) = (origin.to_usize(), target.to_usize());
 
         let target_square_occupant = game_state
-            .bitboards
             .piece_at_square(end)
             .map(|piece| piece.kind);
 
@@ -678,8 +681,8 @@ impl Board {
                 }
             }
             MoveType::EnPassant => Move::en_passant(start, end),
-            MoveType::CastleKingside => Move::castling(end, MoveType::CastleKingside),
-            MoveType::CastleQueenside => Move::castling(end, MoveType::CastleQueenside),
+            MoveType::CastleKingside => Move::castling(end, 2),
+            MoveType::CastleQueenside => Move::castling(end, 3),
         }
     }
 
@@ -872,7 +875,7 @@ impl PieceTextures {
 
         for &colour in &PIECE_COLOURS {
             for &kind in &PIECE_KINDS {
-                let piece = Piece { kind, colour };
+                let piece = Piece { kind, colour, id: 0 }; // pretty nasty to put in fake id here
                 let image_name = piece.to_image_name();
                 let filename = format!("assets/textures/{}.png", image_name.as_str());
                 map.insert(piece, load_piece_texture(&filename).await);

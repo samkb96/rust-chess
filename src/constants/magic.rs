@@ -21,7 +21,7 @@
 // Still tends to be around 100-300x redundant, as equivalent configurations modulo redundancy get different indices on average. But still super fast
 
 use crate::constants::masks::*;
-use crate::mechanics::{BitBoard, PieceKind, closest_blocker, pop_lsb};
+use crate::mechanics::{BitBoard, closest_blocker, pop_lsb};
 use rand::Rng;
 use std::sync::OnceLock;
 
@@ -33,11 +33,12 @@ pub fn generate_static_magics() -> &'static MagicBitboards {
 }
 
 /// access attack masks via slider type, start square, and blocker configuration
-pub fn lookup_magic(piece_kind: PieceKind, square_index: usize, blockers: BitBoard) -> BitBoard {
+pub fn lookup_magic(piece_kind: u8, square_index: usize, blockers: BitBoard) -> BitBoard {
     match piece_kind {
-        PieceKind::Bishop => lookup_magic_for_slider_type(Slider::Bishop, square_index, blockers),
-        PieceKind::Rook => lookup_magic_for_slider_type(Slider::Rook, square_index, blockers),
-        PieceKind::Queen => {
+        2 => lookup_magic_for_slider_type(Slider::Bishop, square_index, blockers), // bishop
+        3 => lookup_magic_for_slider_type(Slider::Rook, square_index, blockers),   // rook
+        4 => {
+            // queen - do rook / bishops directions independently and union together
             let bishop_directions = TRIMMED_BISHOP_MASKS[square_index];
             let bishop_blockers = bishop_directions & blockers;
             let bishop_attacks =

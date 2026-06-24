@@ -5,6 +5,10 @@ use std::fmt;
 use std::sync::Arc;
 
 pub enum GameMode {
+    HumanVsHuman {
+        fen: String,
+        clock: Clock,
+    },
     HumanVsBot {
         bot: Arc<Bot>,
         bot_colour: PieceColour,
@@ -67,7 +71,8 @@ pub fn parse_args(args: &[String]) -> Result<GameMode, GameModeError> {
     }
 
     match args[1].as_str() {
-        "human" => parse_args_human(args),
+        "hvh" => parse_args_human_vs_human(args),
+        "hvb" => parse_args_human_vs_bot(args),
         "bvb" => parse_args_bot(args, false),
         "arena" => parse_args_bot(args, true),
         "perft" => select_perft_from_args(args),
@@ -75,7 +80,22 @@ pub fn parse_args(args: &[String]) -> Result<GameMode, GameModeError> {
     }
 }
 
-fn parse_args_human(args: &[String]) -> Result<GameMode, GameModeError> {
+fn parse_args_human_vs_human(args: &[String]) -> Result<GameMode, GameModeError> {
+    use GameModeError as E;
+    if args.len() < 3 {
+        return Err(E::InvalidArgumentValue {
+            arg: "".to_string(),
+            expected: "fen".to_string(),
+        });
+    }
+
+    let fen = args[2..8].join(" ");
+    let clock = Clock::new(300.0, 5.0);
+
+    Ok(GameMode::HumanVsHuman { fen, clock })
+}
+
+fn parse_args_human_vs_bot(args: &[String]) -> Result<GameMode, GameModeError> {
     use GameModeError as E;
     if args.len() < 3 {
         return Err(E::InvalidBotSelection("".to_string()));

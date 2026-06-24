@@ -1,6 +1,7 @@
 use crate::constants::misc::{DARK_SQUARES, LIGHT_SQUARES};
+use crate::mechanics::PieceColour::{Black, White};
+use crate::mechanics::PieceKind::{Bishop, King, Knight, Pawn, Queen, Rook};
 use crate::mechanics::*;
-use crate::modes::gui::BoardCoordinate;
 use crate::movegen::MoveType;
 use macroquad::prelude::*;
 use smallvec::SmallVec;
@@ -17,6 +18,9 @@ pub struct GameState {
     pub halfmove_clock: u16,
     pub fullmove_number: u16,
     pub previous_state: StateCache,
+    pub pieces: [Option<Piece>; 32],
+    pub piece_locations: [Option<u8>; 32], // locations indexed by piece_id
+    pub id_squares: [Option<u8>; 64] // ids indexed by location
 }
 
 #[derive(Clone)]
@@ -41,11 +45,11 @@ pub struct Clock {
     pub black_time_left: Seconds,
 }
 
-// core methods
+/// fen methods
 impl GameState {
     pub fn from_fen(fen: &str) -> GameState {
         let mut bitboards = BitBoards::default();
-        let mut square_index = 56;
+        let mut square_index = 56; // start on a8, move up files, and jump back at new rank character 
 
         let fen_parts: Vec<&str> = fen.split_whitespace().collect();
         if fen_parts.len() != 6 {
@@ -59,20 +63,53 @@ impl GameState {
         let halfmove = fen_parts[4];
         let fullmove = fen_parts[5];
 
+        let mut pieces: [Option<Piece>; 32] = [None; 32];
+        let mut piece_locations: [Option<u8>; 32] = [None; 32];
+        let mut id_squares: [Option<u8>; 64] = [None; 64];
+
+        let mut next_white_id = 0u8;
+        let mut next_black_id = 16u8;
+
         for character in board.chars() {
             match character {
                 '/' => {
+                    // jump from h file to a file, move one rank back
                     square_index -= 16;
                     continue;
-                } // new rank indicator
-                '1'..='8' => square_index += character.to_digit(10).unwrap(),
+                } 
+                '1'..='8' => square_index += character.to_digit(10).unwrap() as usize,
                 piece => {
                     let square_bit = 1u64 << square_index; // create a 64 bit 000...001, left shift the 1 to square position
-                    let piece = Piece::from_fen_char(piece).unwrap();
+                    let piece_kind = match piece.to_ascii_lowercase() {
+                        'p' => Pawn,
+                        'n' => Knight,
+                        'b' => Bishop,
+                        'r' => Rook,
+                        'q' => Queen,
+                        'k' => King,
+                        _ => panic!("Invalid FEN")
+                    };
 
-                    bitboards.pieces[piece.colour as usize][piece.kind as usize] |= square_bit;
+                    let (piece_colour, piece_id) = if piece.is_ascii_lowercase() {
+                        (Black, next_black_id)
+                    } else {
+                        (White, next_white_id)
+                    };
+
+                    if piece_colour == White {
+                        next_white_id += 1
+                    } else {
+                        next_black_id += 1
+                    };
+
+                    pieces[piece_id as usize] = Some(Piece { kind: piece_kind, colour: piece_colour, id: piece_id });
+                    piece_locations[piece_id as usize] = Some(square_index as u8);
+                    id_squares[square_index as usize] = Some(piece_id);
+
+                    bitboards.pieces[piece_colour as usize][piece_kind as usize] |= square_bit;
                     square_index += 1;
-                }
+                },
+
             }
         }
         bitboards.recompute_aggregates();
@@ -119,150 +156,128 @@ impl GameState {
             halfmove_clock,
             fullmove_number,
             previous_state: vec![],
+            pieces,
+            piece_locations,
+            id_squares,
         }
     }
-    // sluggish old versions
-    /*
-        pub fn make_move(&mut self, move_to_make: Move) {
-            // first cache state
-            self.previous_state.push(PreviousState {
-                bitboards: self.bitboards.clone(),
-                pins_and_checkers: self.pins_and_checkers.clone(),
-                last_move: move_to_make,
-                castling_rights: self.castling_rights,
-                en_passant_square: self.en_passant_square,
-                halfmove_clock: self.halfmove_clock,
-            });
 
-            let start_bitboard = 1u64 << move_to_make.start_square;
-            let end_bitboard = 1u64 << move_to_make.end_square;
+    pub fn to_fen(&self) -> String {
+        let mut fen = String::new();
 
-            let piece_moved = move_to_make.piece_moved;
-            let colour_moved = self.side_to_move;
+        for rank in (0..8).rev() {
+            let mut empty_count = 0;
 
-            let move_type = move_to_make.move_type;
+            for file in 0..8 {
+                let square = rank * 8 + file;
+                let square_bit = 1u64 << square;
 
-            // remove piece at start
-            self.bitboards.pieces[colour_moved as usize][piece_moved as usize] ^= start_bitboard;
-
-            if let Some(captured) = move_to_make.captured
-                && move_type == MoveType::Normal
-            {
-                // remove captured piece
-                self.bitboards.pieces[1 - (colour_moved as usize)][captured as usize] ^= end_bitboard;
-            }
-
-            if move_to_make.promotion.is_none() {
-                // place piece
-                self.bitboards.pieces[colour_moved as usize][piece_moved as usize] ^= end_bitboard;
-            } else {
-                // add promoted piece
-                let promotion_piece = move_to_make
-                    .promotion
-                    .expect("Non-promotion move snuck into promotion logic");
-                self.bitboards.pieces[colour_moved as usize][promotion_piece as usize] ^= end_bitboard;
-            }
-
-            if [MoveType::CastleKingside, MoveType::CastleQueenside].contains(&move_type) {
-                // implement the rook move
-                let (rook_start, rook_end) = match (colour_moved, move_type) {
-                    (PieceColour::White, MoveType::CastleKingside) => (7, 5),
-                    (PieceColour::Black, MoveType::CastleKingside) => (63, 61),
-                    (PieceColour::White, MoveType::CastleQueenside) => (0, 3),
-                    (PieceColour::Black, MoveType::CastleQueenside) => (56, 59),
-                    _ => unreachable!("Non-castling move snuck into castling logic"),
-                };
-
-                // remove rook from original square and add to new square
-                let rook_move_bb = (1u64 << rook_start) | (1u64 << rook_end);
-                self.bitboards.pieces[colour_moved as usize][PieceKind::Rook as usize] ^= rook_move_bb;
-            };
-
-            if move_type == MoveType::EnPassant {
-                // square to remove pawn from is the location of the double push
-                // so 1 rank behind en_passant_square if white captures
-                let captured_pawn_square = match colour_moved {
-                    PieceColour::White => self.en_passant_square.unwrap() >> 8,
-                    PieceColour::Black => self.en_passant_square.unwrap() << 8,
-                };
-                // remove captured pawn from opposition bitboard
-                self.bitboards.pieces[1 - (colour_moved as usize)][0] ^= captured_pawn_square;
-            }
-
-            self.bitboards.recompute_aggregates();
-            self.update_internal_state_params(&move_to_make);
-        }
-
-        pub fn unmake_move(&mut self) {
-            let Some(previous_state) = self.previous_state.pop() else {
-                return; // don't undo if nothing to undo
-            };
-            let side_to_move = self.side_to_move as usize;
-            let side_just_moved = 1 - side_to_move;
-            let last_move = previous_state.last_move;
-
-            // bitboard stuff
-            // add pieces back to original places on bitboards
-            let start_bb = 1u64 << last_move.start_square;
-            let end_bb = 1u64 << last_move.end_square;
-            let piece = last_move.piece_moved;
-
-            // remove piece from end square (promoted piece if promotion)
-            match last_move.promotion {
-                Some(promotion) => self.bitboards.pieces[side_just_moved][promotion as usize] ^= end_bb,
-                None => self.bitboards.pieces[side_just_moved][piece as usize] ^= end_bb,
-            }
-
-            // reappend captured piece to end square, if any
-            if last_move.move_type != MoveType::EnPassant {
-                // if not en passant, captured piece goes on end square of the capturing move
-                if let Some(captured) = last_move.captured {
-                    self.bitboards.pieces[side_to_move][captured as usize] ^= end_bb;
+                if let Some(piece_char) = self.get_piece_char(square_bit) {
+                    if empty_count > 0 {
+                        fen.push_str(&empty_count.to_string());
+                        empty_count = 0;
+                    }
+                    fen.push(piece_char);
+                } else {
+                    empty_count += 1;
                 }
-            } else {
-                // place en passant captured pawn on previous gamestate's en_passant_square
-                let prev_ep_square = previous_state.en_passant_square.unwrap();
-                let original_square = match prev_ep_square > 1u64 << 32 {
-                    false => prev_ep_square << 8, // rank above ep square if white's side of the board
-                    true => prev_ep_square >> 8,  // rank below ep square if black's side of board
-                };
-                self.bitboards.pieces[side_to_move][0] ^= original_square;
             }
 
-            self.bitboards.pieces[side_just_moved][piece as usize] ^= start_bb; // add piece to start square
-
-            if [MoveType::CastleKingside, MoveType::CastleQueenside].contains(&last_move.move_type) {
-                let (rook_before_castling, rook_after_castling) =
-                    match (side_just_moved, last_move.move_type) {
-                        (0, MoveType::CastleKingside) => (7, 5),
-                        (1, MoveType::CastleKingside) => (63, 61),
-                        (0, MoveType::CastleQueenside) => (0, 3),
-                        (1, MoveType::CastleQueenside) => (56, 59),
-                        _ => unreachable!("Non-castling undo move snuck into castling logic"),
-                    };
-                // remove rook from square
-                self.bitboards.pieces[side_just_moved][3] ^= 1u64 << rook_after_castling;
-                // reappend to corner square
-                self.bitboards.pieces[side_just_moved][3] ^= 1u64 << rook_before_castling;
+            if empty_count > 0 {
+                fen.push_str(&empty_count.to_string());
             }
 
-            // other calculated gamestate fields
-            self.side_to_move = PieceColour::try_from(side_just_moved).unwrap();
-            self.bitboards.recompute_aggregates();
-            self.pins_and_checkers = self.bitboards.get_pins_and_checks(self.side_to_move);
-
-            self.fullmove_number -= side_just_moved as u16; // only reduce if black just moved
-
-            // reset cached state
-            self.castling_rights = previous_state.castling_rights;
-            self.halfmove_clock = previous_state.halfmove_clock;
-            self.en_passant_square = previous_state.en_passant_square;
-
-            // self.previous_state already had most recent move etc removed from vector by .pop() called previously
+            if rank > 0 {
+                fen.push('/');
+            }
         }
-    */
+
+        fen.push(' ');
+        fen.push(match self.side_to_move {
+            PieceColour::White => 'w',
+            PieceColour::Black => 'b',
+        });
+
+        fen.push(' ');
+        let mut castling_fen = String::new();
+        if self.castling_rights.white_kingside {
+            castling_fen.push('K');
+        }
+        if self.castling_rights.white_queenside {
+            castling_fen.push('Q');
+        }
+        if self.castling_rights.black_kingside {
+            castling_fen.push('k');
+        }
+        if self.castling_rights.black_queenside {
+            castling_fen.push('q');
+        }
+
+        fen.push_str(if castling_fen.is_empty() {
+            "-"
+        } else {
+            &castling_fen
+        });
+
+        fen.push(' ');
+        match self.en_passant_square {
+            Some(ep_bb) if ep_bb != 0 => {
+                let square = ep_bb.trailing_zeros() as usize;
+                let file = (b'a' + (square % 8) as u8) as char;
+                let rank = (b'1' + (square / 8) as u8) as char;
+                fen.push(file);
+                fen.push(rank);
+            }
+            _ => fen.push('-'),
+        }
+
+        fen.push(' ');
+        fen.push_str(&self.halfmove_clock.to_string());
+
+        fen.push(' ');
+        fen.push_str(&self.fullmove_number.to_string());
+
+        fen
+    }
+
+    fn get_piece_char(&self, square_bit: u64) -> Option<char> {
+        for piece_kind in 0..6 {
+            if (self.bitboards.pieces[0][piece_kind] & square_bit) != 0 {
+                return Some(match piece_kind {
+                    0 => 'P',
+                    1 => 'N',
+                    2 => 'B',
+                    3 => 'R',
+                    4 => 'Q',
+                    5 => 'K',
+                    _ => unreachable!(),
+                });
+            }
+        }
+
+        for piece_kind in 0..6 {
+            if (self.bitboards.pieces[1][piece_kind] & square_bit) != 0 {
+                return Some(match piece_kind {
+                    0 => 'p',
+                    1 => 'n',
+                    2 => 'b',
+                    3 => 'r',
+                    4 => 'q',
+                    5 => 'k',
+                    _ => unreachable!(),
+                });
+            }
+        }
+        None
+    }
 }
 
+impl GameState {
+    pub fn piece_at_square(&self, square: usize) -> Option<Piece> {
+        let id_at_square = self.id_squares[square]?;
+        self.pieces[id_at_square as usize]
+    }
+}
 impl Clock {
     pub fn new(fixed_time: Seconds, increment: Seconds) -> Self {
         Clock {
@@ -434,7 +449,7 @@ impl GameState {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub struct Move {
+pub struct OldMove {
     pub start_square: usize,
     pub end_square: usize,
     pub piece_moved: PieceKind,
@@ -445,20 +460,20 @@ pub struct Move {
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 /// fast 32-bit encoding
-pub struct BitMove {
-    data: u32,
+pub struct Move {
+    pub data: u32,
 }
 
 /// getters
-impl BitMove {
-    #[inline]
+impl Move {
     /// bits 0-5
+    #[inline]
     pub fn start_square(self) -> usize {
         (self.data & 0b111111) as usize
     }
 
-    #[inline]
     /// bits 6-11
+    #[inline]
     pub fn end_square(self) -> usize {
         ((self.data >> 6) & 0b111111) as usize
     }
@@ -466,16 +481,15 @@ impl BitMove {
     // TODO return u8 instead
     #[inline]
     pub fn piece_moved(self) -> PieceKind {
-        let piecekind_bits = ((self.data >> 12) & 0b111) as usize;
-        PieceKind::try_from(piecekind_bits).unwrap()
+        PieceKind::try_from(((self.data >> 12) & 0b111) as u8).unwrap()
     }
 
     // TODO return u8 instead
     #[inline]
     pub fn captured(self) -> Option<PieceKind> {
-        // host none as 111, else direct piece index
-        let captured_bits = ((self.data >> 15) & 0b111) as usize;
-        if captured_bits == 0 {
+        // host none as 0b111, else direct piece index
+        let captured_bits = ((self.data >> 15) & 0b111) as u8;
+        if captured_bits == 7 {
             None
         } else {
             Some(PieceKind::try_from(captured_bits).unwrap())
@@ -485,22 +499,24 @@ impl BitMove {
     // TODO return u8 instead
     #[inline]
     pub fn promotion_choice(self) -> Option<PieceKind> {
-        let promotion_bits = ((self.data >> 18) & 0b111) as usize;
-        if promotion_bits == 0 {
+        let promotion_choice = ((self.data >> 18) & 0b111) as u8;
+        if promotion_choice == 0 {
             None
         } else {
-            Some(PieceKind::try_from(promotion_bits).unwrap())
+            Some(PieceKind::try_from(promotion_choice).unwrap())
         }
     }
 
     #[inline]
     pub fn move_type(self) -> MoveType {
-        let movetype_bits = ((self.data >> 21) & 0b11) as u8;
-        match movetype_bits {
-            0 => MoveType::Normal,
-            1 => MoveType::EnPassant,
-            2 => MoveType::CastleKingside,
-            3 => MoveType::CastleQueenside,
+        MoveType::try_from(((self.data >> 21) & 0b11) as u8).unwrap()
+    }
+
+    #[inline]
+    pub fn side_moving(self) -> PieceColour {
+        match (self.data >> 22) & 0b1 {
+            0 => PieceColour::White,
+            1 => PieceColour::Black,
             _ => unreachable!(),
         }
     }
@@ -521,7 +537,7 @@ impl BitMove {
 }
 
 /// setters
-impl BitMove {
+impl Move {
     // TODO everything needs rewriting to make use of smaller data without casts
     fn from_data(
         start_bits: u32,
@@ -552,16 +568,12 @@ impl BitMove {
         start: usize,
         end: usize,
         piece_moved: PieceKind,
-        target_kind: Option<PieceKind>,
+        target_kind: PieceKind,
     ) -> Self {
         let start_bits = start as u32;
         let end_bits = end as u32;
         let piecemoved_bits = piece_moved as u32;
-        let targetkind_bits = if let Some(target_kind) = target_kind {
-            target_kind as u32
-        } else {
-            0b111
-        };
+        let targetkind_bits = target_kind as u32;
         Self::from_data(start_bits, end_bits, piecemoved_bits, targetkind_bits, 0, 0)
     }
 
@@ -572,7 +584,7 @@ impl BitMove {
         target_kind: Option<PieceKind>,
     ) -> Self {
         let start_bits = start as u32;
-        let end_bits = (end << 6) as u32;
+        let end_bits = end as u32;
         // don't need piecekind bits as pawns are 0
         let targetkind_bits = if let Some(target_kind) = target_kind {
             target_kind as u32
@@ -606,60 +618,29 @@ impl BitMove {
     pub fn en_passant(start: usize, end: usize) -> Self {
         let start_bits = start as u32;
         let end_bits = end as u32;
-        let movetype_bits = 3u32;
+        let movetype_bits = 1u32;
         Self::from_data(start_bits, end_bits, 0, 0, 0, movetype_bits)
     }
 
-    pub fn castling(end: usize, castling_side: MoveType) -> Self {
+    pub fn castling(end: usize, castling_side: u8) -> Self {
         let end_bits = end as u32;
         let start_bits = match end {
             2 | 6 => 4u32,
             58 | 62 => 60u32,
             _ => unreachable!("invalid target square for castling"),
         };
-        let movetype_bits = match castling_side {
-            MoveType::CastleKingside => 1u32,
-            MoveType::CastleQueenside => 2u32,
-            _ => unreachable!(),
-        };
+
+        let movetype_bits = castling_side as u32;
+
         Self::from_data(start_bits, end_bits, 5, 7, 0, movetype_bits)
-    }
-}
-impl Display for Move {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // not really proper notation. tweak this for UCI
-        let piece_char = match self.piece_moved {
-            PieceKind::Pawn => "",
-            PieceKind::Knight => "N",
-            PieceKind::Bishop => "B",
-            PieceKind::Rook => "R",
-            PieceKind::Queen => "Q",
-            PieceKind::King => "K",
-        };
-
-        if self.move_type == MoveType::CastleKingside {
-            write!(f, "O-O")?;
-        }
-        if self.move_type == MoveType::CastleQueenside {
-            write!(f, "O-O-O")?;
-        }
-
-        let start_square_name = BoardCoordinate::from_usize(self.start_square).square_name();
-        let end_square_name = BoardCoordinate::from_usize(self.end_square).square_name();
-
-        if self.captured.is_some() {
-            write!(f, "{piece_char}{start_square_name}x{end_square_name}")
-        } else {
-            write!(f, "{piece_char}{start_square_name}{end_square_name}")
-        }
     }
 }
 
 pub type Moves = SmallVec<[Move; 64]>;
 
-impl Move {
-    pub fn quiet(start: usize, end: usize, piece_kind: PieceKind) -> Move {
-        Move {
+impl OldMove {
+    pub fn quiet(start: usize, end: usize, piece_kind: PieceKind) -> Self {
+        Self {
             start_square: start,
             end_square: end,
             piece_moved: piece_kind,
@@ -674,8 +655,8 @@ impl Move {
         end: usize,
         piece_kind: PieceKind,
         target_kind: PieceKind,
-    ) -> Move {
-        Move {
+    ) -> Self {
+        Self {
             start_square: start,
             end_square: end,
             piece_moved: piece_kind,
@@ -690,8 +671,8 @@ impl Move {
         end: usize,
         promotion_choice: PieceKind,
         target_kind: Option<PieceKind>,
-    ) -> Move {
-        Move {
+    ) -> Self {
+        Self {
             start_square: start,
             end_square: end,
             piece_moved: PieceKind::Pawn,
@@ -700,7 +681,11 @@ impl Move {
             move_type: MoveType::Normal,
         }
     }
-    pub fn promotions(start: usize, end: usize, target_kind: Option<PieceKind>) -> Moves {
+    pub fn promotions(
+        start: usize,
+        end: usize,
+        target_kind: Option<PieceKind>,
+    ) -> SmallVec<[Self; 4]> {
         let promotions = [
             PieceKind::Knight,
             PieceKind::Bishop,
@@ -709,12 +694,12 @@ impl Move {
         ];
         promotions
             .into_iter()
-            .map(|promotion_choice| Move::promotion(start, end, promotion_choice, target_kind))
+            .map(|promotion_choice| Self::promotion(start, end, promotion_choice, target_kind))
             .collect()
     }
 
-    pub fn en_passant(start: usize, end: usize) -> Move {
-        Move {
+    pub fn en_passant(start: usize, end: usize) -> Self {
+        Self {
             start_square: start,
             end_square: end,
             piece_moved: PieceKind::Pawn,
@@ -724,14 +709,14 @@ impl Move {
         }
     }
 
-    pub fn castling(end: usize, castling_side: MoveType) -> Move {
+    pub fn castling(end: usize, castling_side: MoveType) -> Self {
         let start = match end {
             2 | 6 => 4,
             58 | 62 => 60,
             _ => unreachable!("invalid target square for castling"),
         };
 
-        Move {
+        Self {
             start_square: start,
             end_square: end,
             piece_moved: PieceKind::King,

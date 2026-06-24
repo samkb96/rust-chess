@@ -1,7 +1,9 @@
 use crate::constants::magic::lookup_magic;
 use crate::constants::masks::*;
 use crate::constants::misc::*;
-use crate::movegen::MoveType;
+use crate::mechanics::PieceKind::Bishop;
+use crate::mechanics::PieceKind::Queen;
+use crate::mechanics::PieceKind::Rook;
 use arrayvec::ArrayString;
 use macroquad::prelude::*;
 
@@ -22,6 +24,7 @@ pub struct BitBoards {
 pub struct Piece {
     pub kind: PieceKind,
     pub colour: PieceColour,
+    pub id: u8,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
@@ -197,71 +200,18 @@ impl BitBoards {
     }
 
     pub fn king_attacks(&self, piece_colour: PieceColour) -> BitBoard {
-        let king_bb = self.pieces[piece_colour as usize][5];
-
-        assert_eq!(
-            king_bb.count_ones(),
-            1,
-            "King bitboard misfire for {piece_colour:?}"
-        );
         let king_position = self.pieces[piece_colour as usize][5].trailing_zeros() as usize;
 
         KING_ATTACKS[king_position]
     }
 
-    pub fn directional_attacks(
-        &self,
-        slider_locations: BitBoard,
-        slider_colour: usize,
-        direction: usize,
-    ) -> BitBoard {
-        let mut current_slider_attack_masks = 0u64;
-        let mut sliders = slider_locations;
-        let occupied = self.occupied;
-        let attacked_colour = 1 - slider_colour;
-
-        while let Some(start) = pop_lsb(&mut sliders) {
-            let ray = ATTACK_MASKS[direction][start];
-            let blockers = (ray & occupied) & !self.pieces[attacked_colour][5];
-            // king doesn't count as a blocker
-            if blockers != 0 {
-                // squares up to and including blocker are 'attacked', regardless of blocker colour (ie defended,  if blocker is same colour)
-                let blocker_square = closest_blocker(direction, blockers);
-                let ray_up_to_blocker = ray & MASK_UP_TO_INCLUSIVE[start][blocker_square];
-                current_slider_attack_masks |= ray_up_to_blocker;
-            } else {
-                current_slider_attack_masks |= ray;
-            }
-        }
-        current_slider_attack_masks
-    }
-
-    pub fn old_slider_attacks(&self, piece_kind: usize, piece_colour: PieceColour) -> BitBoard {
-        let mut current_slider_attack_masks = 0u64;
-        let sliders = self.pieces[piece_colour as usize][piece_kind];
-        let directions = match piece_kind {
-            2 => BISHOP_DIRECTIONS,
-            3 => ROOK_DIRECTIONS,
-            4 => QUEEN_DIRECTIONS,
-            _ => unreachable!(
-                "trying to calculate slider attack mask behaviour for non-slider piece"
-            ),
-        };
-
-        for &direction in directions {
-            current_slider_attack_masks |=
-                self.directional_attacks(sliders, piece_colour as usize, direction);
-        }
-        current_slider_attack_masks
-    }
-
-    pub fn slider_attacks(&self, piece_kind: usize, piece_colour: PieceColour) -> BitBoard {
-        let mut sliders = self.pieces[piece_colour as usize][piece_kind];
+    pub fn slider_attacks(&self, piece_kind: PieceKind, piece_colour: PieceColour) -> BitBoard {
+        let mut sliders = self.get(piece_colour, piece_kind);
         let blockers = self.occupied;
         let trimmed_masks = match piece_kind {
-            2 => TRIMMED_BISHOP_MASKS,
-            3 => TRIMMED_ROOK_MASKS,
-            4 => TRIMMED_QUEEN_MASKS,
+            Bishop => TRIMMED_BISHOP_MASKS,
+            Rook => TRIMMED_ROOK_MASKS,
+            Queen => TRIMMED_QUEEN_MASKS,
             _ => unreachable!(),
         };
 
@@ -271,11 +221,7 @@ impl BitBoards {
             let trimmed_mask = trimmed_masks[slider_index];
             let blocker_configuration = trimmed_mask & blockers;
 
-            let attack_mask = lookup_magic(
-                PieceKind::try_from(piece_kind).unwrap(),
-                slider_index,
-                blocker_configuration,
-            );
+            let attack_mask = lookup_magic(piece_kind as u8, slider_index, blocker_configuration);
             current_slider_attack_masks |= attack_mask;
         }
         current_slider_attack_masks
@@ -286,9 +232,9 @@ impl BitBoards {
 
         self.attacked_by[colour][0] = self.pawn_attacks(piece_colour);
         self.attacked_by[colour][1] = self.knight_attacks(piece_colour);
-        self.attacked_by[colour][2] = self.slider_attacks(2, piece_colour);
-        self.attacked_by[colour][3] = self.slider_attacks(3, piece_colour);
-        self.attacked_by[colour][4] = self.slider_attacks(4, piece_colour);
+        self.attacked_by[colour][2] = self.slider_attacks(Bishop, piece_colour);
+        self.attacked_by[colour][3] = self.slider_attacks(Rook, piece_colour);
+        self.attacked_by[colour][4] = self.slider_attacks(Queen, piece_colour);
         self.attacked_by[colour][5] = self.king_attacks(piece_colour);
 
         let mut attacked_squares = 0u64;
@@ -302,6 +248,12 @@ impl BitBoards {
 
 // helpers
 impl BitBoards {
+    pub fn get(&self, piece_colour: PieceColour, piece_kind: PieceKind) -> BitBoard {
+        let u_colour = piece_colour as usize;
+        let u_kind = piece_kind as usize;
+        self.pieces[u_colour][u_kind]
+    }
+
     fn friendly_pieces_on_ray(&self, piece_colour: PieceColour, ray: BitBoard) -> u32 {
         (self.get_coloured_pieces(piece_colour as usize) & ray).count_ones()
     }
@@ -338,30 +290,6 @@ impl BitBoards {
         true
     }
 
-    pub fn piece_at_square(&self, square_index: usize) -> Option<Piece> {
-        let square_bit = 1u64 << square_index;
-
-        if self.occupied & square_bit == 0 {
-            return None;
-        }
-
-        let colour = if self.white_pieces & square_bit != 0 {
-            PieceColour::White
-        } else {
-            PieceColour::Black
-        };
-
-        for kind_index in 0..6 {
-            if self.pieces[colour as usize][kind_index] & square_bit != 0 {
-                return Some(Piece::new(colour, PieceKind::try_from(kind_index).unwrap()));
-            }
-        }
-
-        unreachable!(
-            "Piece either exists or it doesn't - maybe bitboard aggregates are out of sync?"
-        )
-    }
-
     pub fn enemy_at_square(&self, square: usize, piece_colour: PieceColour) -> Option<PieceKind> {
         let enemy_bitboards = self.pieces[1 - (piece_colour as usize)];
         for (index, bitboard) in enemy_bitboards.iter().enumerate() {
@@ -383,8 +311,18 @@ impl BitBoards {
 
 impl TryFrom<usize> for PieceColour {
     type Error = ();
-
     fn try_from(colour_index: usize) -> Result<Self, Self::Error> {
+        match colour_index {
+            0 => Ok(PieceColour::White),
+            1 => Ok(PieceColour::Black),
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryFrom<u8> for PieceColour {
+    type Error = ();
+    fn try_from(colour_index: u8) -> Result<Self, Self::Error> {
         match colour_index {
             0 => Ok(PieceColour::White),
             1 => Ok(PieceColour::Black),
@@ -395,8 +333,22 @@ impl TryFrom<usize> for PieceColour {
 
 impl TryFrom<usize> for PieceKind {
     type Error = ();
-
     fn try_from(kind_index: usize) -> Result<Self, Self::Error> {
+        match kind_index {
+            0 => Ok(PieceKind::Pawn),
+            1 => Ok(PieceKind::Knight),
+            2 => Ok(PieceKind::Bishop),
+            3 => Ok(PieceKind::Rook),
+            4 => Ok(PieceKind::Queen),
+            5 => Ok(PieceKind::King),
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryFrom<u8> for PieceKind {
+    type Error = ();
+    fn try_from(kind_index: u8) -> Result<Self, Self::Error> {
         match kind_index {
             0 => Ok(PieceKind::Pawn),
             1 => Ok(PieceKind::Knight),
@@ -420,29 +372,8 @@ impl PieceColour {
 }
 
 impl Piece {
-    pub fn new(piece_colour: PieceColour, piece_kind: PieceKind) -> Self {
-        Piece {
-            colour: piece_colour,
-            kind: piece_kind,
-        }
-    }
-
-    pub fn from_fen_char(c: char) -> Option<Piece> {
-        let piece_colour = if c.is_uppercase() {
-            PieceColour::White
-        } else {
-            PieceColour::Black
-        };
-        let piece_kind = match c.to_ascii_lowercase() {
-            'p' => PieceKind::Pawn,
-            'n' => PieceKind::Knight,
-            'b' => PieceKind::Bishop,
-            'r' => PieceKind::Rook,
-            'q' => PieceKind::Queen,
-            'k' => PieceKind::King,
-            _ => return None,
-        };
-        Some(Piece::new(piece_colour, piece_kind))
+    pub fn new(colour: PieceColour, kind: PieceKind, id: u8) -> Self {
+        Piece { colour, kind, id }
     }
 
     pub fn to_image_name(self) -> ArrayString<2> {
@@ -459,12 +390,12 @@ impl Piece {
 }
 
 impl CastlingRights {
-    pub fn check(&self, piece_colour: PieceColour, side: MoveType) -> bool {
+    pub fn check(&self, piece_colour: u8, side: u8) -> bool {
         match (side, piece_colour) {
-            (MoveType::CastleQueenside, PieceColour::White) => self.white_queenside,
-            (MoveType::CastleQueenside, PieceColour::Black) => self.black_queenside,
-            (MoveType::CastleKingside, PieceColour::White) => self.white_kingside,
-            (MoveType::CastleKingside, PieceColour::Black) => self.black_kingside,
+            (2, 0) => self.white_kingside,
+            (2, 1) => self.black_kingside,
+            (3, 0) => self.white_queenside,
+            (3, 1) => self.black_queenside,
             _ => unreachable!("you need a castling movetype"),
         }
     }

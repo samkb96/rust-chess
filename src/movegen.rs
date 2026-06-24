@@ -2,6 +2,8 @@ use crate::constants::magic::lookup_magic;
 use crate::constants::masks::*;
 use crate::constants::misc::CASTLING_SQUARES;
 use crate::game_state::{GameState, Move, Moves};
+use crate::mechanics::PieceColour::{Black, White};
+use crate::mechanics::PieceKind::{Bishop, Queen, Rook};
 use crate::mechanics::{BitBoard, Piece, PieceColour, PieceKind, pop_lsb};
 use smallvec::SmallVec;
 
@@ -13,6 +15,19 @@ pub enum MoveType {
     CastleKingside,
     CastleQueenside,
     EnPassant,
+}
+
+impl TryFrom<u8> for MoveType {
+    type Error = ();
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(MoveType::Normal),
+            1 => Ok(MoveType::EnPassant),
+            2 => Ok(MoveType::CastleKingside),
+            3 => Ok(MoveType::CastleQueenside),
+            _ => Err(()),
+        }
+    }
 }
 
 // piece move generators
@@ -31,7 +46,7 @@ impl GameState {
     pub fn legal_moves_from(&self, start: usize) -> Moves {
         self.legal_moves()
             .into_iter()
-            .filter(|m| m.start_square == start)
+            .filter(|m| m.start_square() == start)
             .collect()
     }
 
@@ -241,26 +256,26 @@ impl GameState {
         moves
     }
 
-    fn slider_moves(&self, start: usize, piece: Piece) -> Moves {
+    fn slider_moves(&self, start: usize, piece_colour: PieceColour, piece_kind: PieceKind) -> Moves {
         let mut moves: Moves = SmallVec::with_capacity(MOVES_VEC_CAPACITY);
         let occupied = self.bitboards.occupied;
         let pin_and_check_mask =
             self.pins_and_checkers.pins[start] & self.pins_and_checkers.check_mask;
 
-        let (friendly_pieces, enemy_pieces) = match piece.colour {
-            PieceColour::White => (self.bitboards.white_pieces, self.bitboards.black_pieces),
-            PieceColour::Black => (self.bitboards.black_pieces, self.bitboards.white_pieces),
+        let (friendly_pieces, enemy_pieces) = match piece_colour {
+            White => (self.bitboards.white_pieces, self.bitboards.black_pieces),
+            Black => (self.bitboards.black_pieces, self.bitboards.white_pieces),
         };
 
-        let potential_attacks = match piece.kind {
-            PieceKind::Bishop => TRIMMED_BISHOP_MASKS[start],
-            PieceKind::Rook => TRIMMED_ROOK_MASKS[start],
-            PieceKind::Queen => TRIMMED_QUEEN_MASKS[start],
+        let potential_attacks = match piece_kind {
+            Bishop => TRIMMED_BISHOP_MASKS[start],
+            Rook => TRIMMED_ROOK_MASKS[start],
+            Queen => TRIMMED_QUEEN_MASKS[start],
             _ => unreachable!(),
         };
 
         let blockers = potential_attacks & occupied;
-        let mut attack_mask = lookup_magic(piece.kind, start, blockers);
+        let mut attack_mask = lookup_magic(piece_kind as u8, start, blockers);
 
         attack_mask &= pin_and_check_mask; // can't move out of a pin etc
         attack_mask &= !friendly_pieces; // can't capture own pieces
@@ -270,95 +285,42 @@ impl GameState {
 
         while let Some(end) = pop_lsb(&mut capturable_mask) {
             let captured_piece = self
-                .bitboards
                 .piece_at_square(end)
                 .expect("Filtered for squares occupied by enemies already");
-            moves.push(Move::capture(start, end, piece.kind, captured_piece.kind))
+            moves.push(Move::capture(start, end, piece_kind, captured_piece.kind))
         }
         while let Some(end) = pop_lsb(&mut quiet_mask) {
-            moves.push(Move::quiet(start, end, piece.kind))
+            moves.push(Move::quiet(start, end, piece_kind))
         }
-        // old code
-        /*
-        for &direction in directions {
-            let pin_and_check_mask = pin_array[start] & check_mask;
-
-            let ray = ATTACK_MASKS[direction][start];
-            let blockers = ray & occupied;
-
-            if blockers != 0 {
-                let blocker_square = closest_blocker(direction, blockers);
-                let mut ray_up_to_blocker = ray & MASK_UP_TO_EXCLUSIVE[start][blocker_square];
-
-                // append quiet moves
-                'target_loop: while let Some(end) = pop_lsb(&mut ray_up_to_blocker) {
-                    let target_square_illegal = ((1u64 << end) & pin_and_check_mask) == 0;
-                    if target_square_illegal {
-                        // move breaks pin, try next end square
-                        continue 'target_loop;
-                    }
-                    moves.push(Move::quiet(start, end, piece.kind))
-                }
-
-                // if blocker is capturable, capture it
-
-                if let Some(target_piece) = self.bitboards.piece_at_square(blocker_square) {
-                    let target_square_illegal =
-                        ((1u64 << blocker_square) & pin_and_check_mask) == 0;
-                    if (target_piece.colour != piece.colour) && !target_square_illegal {
-                        moves.push(Move::capture(
-                            start,
-                            blocker_square,
-                            piece.kind,
-                            target_piece.kind,
-                        ));
-                    }
-                }
-            } else {
-                let mut ray_open = ray;
-                'target_loop: while let Some(end) = pop_lsb(&mut ray_open) {
-                    let target_square_illegal = ((1u64 << end) & pin_and_check_mask) == 0;
-                    if target_square_illegal {
-                        // move breaks pin, try next end square
-                        continue 'target_loop;
-                    }
-                    moves.push(Move::quiet(start, end, piece.kind))
-                }
-            }
-        }
-        */
         moves
     }
 
     fn bishop_moves(&self, piece_colour: PieceColour) -> Moves {
         let mut moves: Moves = SmallVec::with_capacity(MOVES_VEC_CAPACITY);
-        let piece = Piece::new(piece_colour, PieceKind::Bishop);
         let mut bishops = self.bitboards.pieces[piece_colour as usize][2];
 
         while let Some(start) = pop_lsb(&mut bishops) {
-            moves.extend(self.slider_moves(start, piece));
+            moves.extend(self.slider_moves(start, piece_colour, Bishop));
         }
         moves
     }
 
     fn rook_moves(&self, piece_colour: PieceColour) -> Moves {
         let mut moves: Moves = SmallVec::with_capacity(MOVES_VEC_CAPACITY);
-        let piece = Piece::new(piece_colour, PieceKind::Rook);
         let mut rooks = self.bitboards.pieces[piece_colour as usize][3];
 
         while let Some(start) = pop_lsb(&mut rooks) {
-            moves.extend(self.slider_moves(start, piece));
+            moves.extend(self.slider_moves(start, piece_colour, Rook));
         }
         moves
     }
 
     fn queen_moves(&self, piece_colour: PieceColour) -> Moves {
         let mut moves: Moves = SmallVec::with_capacity(MOVES_VEC_CAPACITY);
-        let piece = Piece::new(piece_colour, PieceKind::Queen);
         let mut queens = self.bitboards.pieces[piece_colour as usize][4];
 
         while let Some(start) = pop_lsb(&mut queens) {
-            moves.extend(self.slider_moves(start, piece));
+            moves.extend(self.slider_moves(start, piece_colour, Queen));
         }
         moves
     }
@@ -416,13 +378,10 @@ impl GameState {
         }
 
         // castling
-        for (side_id, castling_side) in [
-            (0, MoveType::CastleQueenside),
-            (1, MoveType::CastleKingside),
-        ]
-        .iter()
-        {
-            let castling_rights_valid = self.castling_rights.check(piece_colour, *castling_side);
+        for (side_id, castling_side) in [(0, 3), (1, 2)].iter() {
+            let castling_rights_valid = self
+                .castling_rights
+                .check(piece_colour as u8, *castling_side);
 
             let obstruction_squares = CASTLING_SQUARES.0[piece_colour as usize][*side_id];
             let prevented_by_obstruction = (obstruction_squares & self.bitboards.occupied) != 0;
@@ -432,10 +391,10 @@ impl GameState {
 
             if castling_rights_valid && !prevented_by_obstruction && !prevented_by_attack {
                 let king_target = match (piece_colour, castling_side) {
-                    (PieceColour::White, MoveType::CastleKingside) => 6,
-                    (PieceColour::Black, MoveType::CastleKingside) => 62,
-                    (PieceColour::White, MoveType::CastleQueenside) => 2,
-                    (PieceColour::Black, MoveType::CastleQueenside) => 58,
+                    (PieceColour::White, 2) => 6,
+                    (PieceColour::Black, 2) => 62,
+                    (PieceColour::White, 3) => 2,
+                    (PieceColour::Black, 3) => 58,
                     _ => unreachable!("Non-castling move in castling generation"),
                 };
 
@@ -465,7 +424,10 @@ impl GameState {
         }
 
         let slider_index = checking_slider.trailing_zeros() as usize;
-        let slider_kind = self.bitboards.piece_at_square(slider_index).unwrap().kind;
+        let slider_kind = self
+            .piece_at_square(slider_index)
+            .expect("No slider found in attack recalc")
+            .kind;
 
         let trimmed_slider_mask = match slider_kind {
             PieceKind::Bishop => TRIMMED_BISHOP_MASKS[slider_index],
@@ -478,7 +440,7 @@ impl GameState {
         let blockers_no_king = self.bitboards.occupied & !king_bit;
         let relevant_blockers = trimmed_slider_mask & blockers_no_king;
 
-        let phantom_slider_mask = lookup_magic(slider_kind, slider_index, relevant_blockers);
+        let phantom_slider_mask = lookup_magic(slider_kind as u8, slider_index, relevant_blockers);
 
         enemy_attacks | phantom_slider_mask
     }
@@ -499,11 +461,14 @@ impl GameState {
         let rays_from_king = TRIMMED_QUEEN_MASKS[start];
         let blockers = self.bitboards.occupied & rays_from_king;
 
-        let possible_sliders_attacking_king = lookup_magic(PieceKind::Queen, start, blockers);
+        let possible_sliders_attacking_king = lookup_magic(4, start, blockers);
         let mut relevant_sliders = possible_sliders_attacking_king & enemy_sliders;
 
         while let Some(slider_index) = pop_lsb(&mut relevant_sliders) {
-            let slider_kind = self.bitboards.piece_at_square(slider_index).unwrap().kind;
+            let slider_kind = self
+                .piece_at_square(slider_index)
+                .expect("no slider found in same side attack update")
+                .kind;
             let trimmed_mask = match slider_kind {
                 PieceKind::Bishop => TRIMMED_BISHOP_MASKS[slider_index],
                 PieceKind::Rook => TRIMMED_ROOK_MASKS[slider_index],
@@ -513,7 +478,8 @@ impl GameState {
 
             let relevant_blockers = trimmed_mask & blockers & !king_bb; // remove king from blockers for phantom
 
-            let phantom_slider_attacks = lookup_magic(slider_kind, slider_index, relevant_blockers);
+            let phantom_slider_attacks =
+                lookup_magic(slider_kind as u8, slider_index, relevant_blockers);
 
             enemy_attacks |= phantom_slider_attacks
         }

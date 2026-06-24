@@ -54,13 +54,12 @@ fn perft_divide(fen: &str, depth: usize) -> (usize, usize, usize, usize) {
     let start = Instant::now();
 
     for m in first_moves {
-        let move_name_str = move_name(m).to_string();
-        println!("Analysing {move_name_str}");
+        println!("Analysing {:?}", m);
         game_state.make_move(m);
         let nodes = perft(&mut game_state, depth - 1);
         game_state.unmake_move();
 
-        my_counts.insert(move_name_str.clone(), nodes);
+        //my_counts.insert(m.to_string(), nodes); //TODO reimplement Display in the same way stockfish does
         my_total += nodes;
     }
     let elapsed = start.elapsed();
@@ -168,21 +167,4 @@ pub fn stockfish_perft(fen: &str, depth: u32) -> StockfishPerft {
     send("quit", &mut stdin);
 
     Ok(perft_map)
-}
-
-fn move_name(mv: Move) -> String {
-    let mut name = String::new();
-    let (start_file, start_rank) = (
-        ((mv.start_square % 8) as u8 + b'a') as char,
-        ((mv.start_square / 8) as u8 + b'1') as char,
-    );
-    let (end_file, end_rank) = (
-        ((mv.end_square % 8) as u8 + b'a') as char,
-        ((mv.end_square / 8) as u8 + b'1') as char,
-    );
-
-    for character in [start_file, start_rank, end_file, end_rank] {
-        name.push(character);
-    }
-    name
 }
