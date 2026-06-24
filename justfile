@@ -29,7 +29,7 @@ perft *args:
 # default perft from usual start position, with all the base compiler optimisations. last check: 4.8m nps from first fen
 movegen:
     # start
-    cargo run --release --bin cli -- perft rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 5
+    RUST_BACKTRACE=1 cargo run --release --bin cli -- perft rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 5
     # middlegame
     cargo run --release --bin cli -- perft r1bqkb1r/pppp1ppp/2n2n2/4p3/3PP3/2N2N2/PPP2PPP/R1BQKB1R w KQkq - 1 8 4
     # endgame

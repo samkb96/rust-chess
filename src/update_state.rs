@@ -3,8 +3,8 @@ use crate::constants::masks::{
     KNIGHT_ATTACKS, TRIMMED_BISHOP_MASKS, TRIMMED_QUEEN_MASKS, TRIMMED_ROOK_MASKS,
 };
 use crate::game_state::{GameState, Move, PreviousState};
-use crate::mechanics::PieceColour::*;
 use crate::mechanics::PieceKind::*;
+use crate::mechanics::{Piece, PieceColour::*};
 use crate::mechanics::{PieceColour, PieceKind};
 use crate::movegen::MoveType::{self, *};
 
@@ -14,8 +14,10 @@ fn initialise_recalculated() -> Recalculated {
 }
 
 // TODO rewrite everything with piece ids
-// implement to make_move and unmake_move - make sure they're in sync with the bitboards
-// then, rewrite attack mask / pins and checks to incrementally update 
+// TODO implement to make_move and unmake_move - make sure they're in sync with the bitboards
+// TODO incremental attack mask update
+// TODO incremental pins/checks update?
+// TODO incremental movegen
 
 impl GameState {
     pub fn make_move(&mut self, move_to_make: Move) {
@@ -30,7 +32,7 @@ impl GameState {
             println!("Legal moves:");
 
             for mv in legal_moves {
-                println!("{:?}", mv);
+                println!("{mv:?}");
             }
 
             println!("FEN: {}", self.to_fen());
@@ -46,6 +48,7 @@ impl GameState {
         });
 
         self.update_position_bitboards(move_to_make);
+        self.update_pieces(move_to_make);
         self.update_position_aggregates();
         self.update_aggregates(move_to_make);
         self.update_internal_state_params(move_to_make);
@@ -58,6 +61,7 @@ impl GameState {
             .expect("Calling unmake move with empty cache");
 
         self.bitboards = previous_state.bitboards;
+        self.revert_pieces(previous_state.last_move);
         self.side_to_move = self.side_to_move.flip();
         self.pins_and_checkers = self.bitboards.get_pins_and_checks(self.side_to_move);
 
@@ -67,6 +71,167 @@ impl GameState {
 
         if self.side_to_move == Black {
             self.fullmove_number -= 1 // should only decrement if we're unmaking black's move
+        }
+    }
+
+    fn update_pieces(&mut self, move_to_make: Move) {
+        let start_square = move_to_make.start_square();
+        let end_square = move_to_make.end_square();
+        let promotion_choice = move_to_make.promotion_choice();
+        let move_type = move_to_make.move_type();
+        let id_moved = move_to_make.id_moved();
+        let id_captured = move_to_make.id_captured();
+
+        let side_moving = self.side_to_move;
+
+        // normal moves
+
+        match move_type {
+            Normal => {
+                // moved piece
+                self.locations_from_ids[id_moved as usize] = Some(end_square);
+                self.ids_from_locations[start_square as usize] = None;
+                self.ids_from_locations[end_square as usize] = Some(id_moved);
+
+                if let Some(id_captured) = id_captured {
+                    self.locations_from_ids[id_captured as usize] = None;
+                    self.pieces[id_captured as usize] = None;
+                }
+
+                if let Some(promotion_choice) = promotion_choice {
+                    self.pieces[id_moved as usize]
+                        .expect("Promoting pawn should exist")
+                        .kind = promotion_choice;
+                }
+            }
+            EnPassant => {
+                let id_captured = id_captured.unwrap();
+
+                // move the capturing pawn
+                self.locations_from_ids[id_moved as usize] = Some(end_square);
+                self.ids_from_locations[start_square as usize] = None;
+                self.ids_from_locations[end_square as usize] = Some(id_moved);
+
+                // remove the ep captured pawn
+                let ep_captured_rank = start_square & 0xF8;
+                let ep_captured_file = end_square & 0x7;
+                let ep_captured_square = ep_captured_rank | ep_captured_file;
+
+                self.pieces[id_captured as usize] = None;
+                self.locations_from_ids[id_captured as usize] = None;
+                self.ids_from_locations[ep_captured_square as usize] = None;
+            }
+            CastleKingside | CastleQueenside => {
+                // castling
+                let (mut rook_old_square, mut rook_new_square) = match move_type {
+                    CastleKingside => (7usize, 5usize),
+                    CastleQueenside => (0usize, 3usize),
+                    _ => unreachable!(),
+                };
+
+                if side_moving == Black {
+                    rook_old_square += 56;
+                    rook_new_square += 56;
+                };
+
+                let rook_id = self.ids_from_locations[rook_old_square].unwrap();
+
+                // update king
+                self.ids_from_locations[start_square as usize] = None;
+                self.ids_from_locations[end_square as usize] = Some(id_moved);
+                self.locations_from_ids[id_moved as usize] = Some(end_square);
+
+                // update rook
+                self.ids_from_locations[rook_old_square] = None;
+                self.ids_from_locations[rook_new_square] = Some(rook_id);
+                self.locations_from_ids[rook_id as usize] = Some(rook_new_square as u8);
+            }
+        }
+    }
+
+    fn revert_pieces(&mut self, move_made: Move) {
+        let start_square = move_made.start_square();
+        let end_square = move_made.end_square();
+        let captured = move_made.captured();
+        let promotion_choice = move_made.promotion_choice();
+        let move_type = move_made.move_type();
+        let id_moved = move_made.id_moved();
+        let id_captured = move_made.id_captured();
+        let side_just_moved = move_made.side_moving();
+
+        match move_type {
+            Normal => {
+                // reappend piece to start square
+                self.ids_from_locations[start_square as usize] = Some(id_moved);
+                self.locations_from_ids[id_moved as usize] = Some(start_square);
+
+                // reappend captured piece
+                if let Some(captured) = captured {
+                    let id_captured = id_captured.expect("Captured ID missing");
+                    let captured_piece = Piece {
+                        kind: captured,
+                        colour: side_just_moved.flip(),
+                        id: id_captured,
+                    };
+                    self.pieces[id_captured as usize] = Some(captured_piece);
+                    self.locations_from_ids[id_captured as usize] = Some(end_square);
+                    self.ids_from_locations[end_square as usize] = Some(id_captured);
+                }
+
+                // turn promoted piece back into pawn
+                if promotion_choice.is_some() {
+                    self.pieces[id_moved as usize]
+                        .expect("Lost track of promoting pawn's ID")
+                        .kind = Pawn;
+                }
+            }
+            EnPassant => {
+                let id_captured = id_captured.expect("Lost track of EP captured pawn ID");
+                // reappend pawn to start square
+                self.ids_from_locations[start_square as usize] = Some(id_moved);
+                self.locations_from_ids[id_moved as usize] = Some(start_square);
+
+                // remove pawn from end square
+                self.ids_from_locations[end_square as usize] = None;
+                self.locations_from_ids[id_moved as usize] = None;
+
+                // reappend captured pawn
+                let ep_captured_rank = start_square & 0xF8;
+                let ep_captured_file = end_square & 0x7;
+                let ep_captured_square = ep_captured_rank | ep_captured_file;
+
+                self.pieces[id_captured as usize] = Some(Piece {
+                    kind: Pawn,
+                    colour: side_just_moved.flip(),
+                    id: id_captured,
+                });
+                self.locations_from_ids[id_captured as usize] = Some(ep_captured_square);
+                self.ids_from_locations[ep_captured_square as usize] = Some(id_captured);
+            }
+            CastleKingside | CastleQueenside => {
+                let (mut rook_square_before, mut rook_square_after) = match move_type {
+                    CastleKingside => (7usize, 5usize),
+                    CastleQueenside => (0usize, 3usize),
+                    _ => unreachable!(),
+                };
+
+                if side_just_moved == Black {
+                    rook_square_after += 56;
+                    rook_square_before += 56;
+                };
+
+                let rook_id = id_captured.unwrap();
+
+                // king
+                self.ids_from_locations[end_square as usize] = None;
+                self.ids_from_locations[start_square as usize] = Some(id_moved);
+                self.locations_from_ids[id_moved as usize] = Some(start_square);
+
+                // rook
+                self.ids_from_locations[rook_square_after] = None;
+                self.ids_from_locations[rook_square_before] = Some(rook_id);
+                self.locations_from_ids[id_moved as usize] = Some(start_square);
+            }
         }
     }
 
@@ -327,7 +492,7 @@ impl GameState {
 
         // for each colour and each slider type, check if there are any in view of the start/end square (without considering blocker)
         for square in [start_square, end_square] {
-            recalculated = self.update_sliders_in_view_of_square(square, recalculated)
+            recalculated = self.update_sliders_in_view_of_square(square as usize, recalculated)
         }
 
         recalculated
@@ -392,7 +557,7 @@ impl GameState {
                 if let Some(promotion_choice) = promotion_choice {
                     self.update_aggregates_for_promotion(
                         promotion_choice,
-                        end_square,
+                        end_square as usize,
                         recalculated,
                     );
                 }
@@ -402,7 +567,7 @@ impl GameState {
                 // basically the same process as normal move, but we need to check if any sliders are unblocked on the captured piece square too
                 recalculated = self.update_aggregates_for_normal_move(move_made, recalculated);
                 let captured_pawn_square = (start_square & 0xF8) | (end_square & 0x7); // lovely bitop. start rank & end file
-                self.update_sliders_in_view_of_square(captured_pawn_square, recalculated);
+                self.update_sliders_in_view_of_square(captured_pawn_square as usize, recalculated);
             }
             CastleKingside | CastleQueenside => {
                 self.update_aggregates_for_castling(move_type, side_to_move, recalculated);
@@ -431,7 +596,6 @@ impl GameState {
                     self.bitboards.slider_attacks(piece_kind, colour)
             }
             King => self.bitboards.attacked_by[u_colour][5] = self.bitboards.king_attacks(colour),
-            _ => (),
         }
     }
 

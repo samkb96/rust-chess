@@ -49,12 +49,12 @@ fn perft_divide(fen: &str, depth: usize) -> (usize, usize, usize, usize) {
     let mut game_state = GameState::from_fen(fen);
     let first_moves = game_state.legal_moves();
 
-    let mut my_counts: HashMap<String, usize> = HashMap::new();
+    let my_counts: HashMap<String, usize> = HashMap::new();
     let mut my_total = 0;
     let start = Instant::now();
 
     for m in first_moves {
-        println!("Analysing {:?}", m);
+        println!("Analysing {m:?}");
         game_state.make_move(m);
         let nodes = perft(&mut game_state, depth - 1);
         game_state.unmake_move();

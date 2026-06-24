@@ -19,8 +19,8 @@ pub struct GameState {
     pub fullmove_number: u16,
     pub previous_state: StateCache,
     pub pieces: [Option<Piece>; 32],
-    pub piece_locations: [Option<u8>; 32], // locations indexed by piece_id
-    pub id_squares: [Option<u8>; 64] // ids indexed by location
+    pub locations_from_ids: [Option<u8>; 32], // locations indexed by piece_id
+    pub ids_from_locations: [Option<u8>; 64], // ids indexed by location
 }
 
 #[derive(Clone)]
@@ -64,8 +64,8 @@ impl GameState {
         let fullmove = fen_parts[5];
 
         let mut pieces: [Option<Piece>; 32] = [None; 32];
-        let mut piece_locations: [Option<u8>; 32] = [None; 32];
-        let mut id_squares: [Option<u8>; 64] = [None; 64];
+        let mut locations_from_ids: [Option<u8>; 32] = [None; 32];
+        let mut ids_from_locations: [Option<u8>; 64] = [None; 64];
 
         let mut next_white_id = 0u8;
         let mut next_black_id = 16u8;
@@ -76,7 +76,7 @@ impl GameState {
                     // jump from h file to a file, move one rank back
                     square_index -= 16;
                     continue;
-                } 
+                }
                 '1'..='8' => square_index += character.to_digit(10).unwrap() as usize,
                 piece => {
                     let square_bit = 1u64 << square_index; // create a 64 bit 000...001, left shift the 1 to square position
@@ -87,7 +87,7 @@ impl GameState {
                         'r' => Rook,
                         'q' => Queen,
                         'k' => King,
-                        _ => panic!("Invalid FEN")
+                        _ => panic!("Invalid FEN"),
                     };
 
                     let (piece_colour, piece_id) = if piece.is_ascii_lowercase() {
@@ -102,14 +102,17 @@ impl GameState {
                         next_black_id += 1
                     };
 
-                    pieces[piece_id as usize] = Some(Piece { kind: piece_kind, colour: piece_colour, id: piece_id });
-                    piece_locations[piece_id as usize] = Some(square_index as u8);
-                    id_squares[square_index as usize] = Some(piece_id);
+                    pieces[piece_id as usize] = Some(Piece {
+                        kind: piece_kind,
+                        colour: piece_colour,
+                        id: piece_id,
+                    });
+                    locations_from_ids[piece_id as usize] = Some(square_index as u8);
+                    ids_from_locations[square_index] = Some(piece_id);
 
                     bitboards.pieces[piece_colour as usize][piece_kind as usize] |= square_bit;
                     square_index += 1;
-                },
-
+                }
             }
         }
         bitboards.recompute_aggregates();
@@ -157,8 +160,8 @@ impl GameState {
             fullmove_number,
             previous_state: vec![],
             pieces,
-            piece_locations,
-            id_squares,
+            locations_from_ids,
+            ids_from_locations,
         }
     }
 
@@ -274,7 +277,7 @@ impl GameState {
 
 impl GameState {
     pub fn piece_at_square(&self, square: usize) -> Option<Piece> {
-        let id_at_square = self.id_squares[square]?;
+        let id_at_square = self.locations_from_ids[square]?;
         self.pieces[id_at_square as usize]
     }
 }
@@ -468,14 +471,14 @@ pub struct Move {
 impl Move {
     /// bits 0-5
     #[inline]
-    pub fn start_square(self) -> usize {
-        (self.data & 0b111111) as usize
+    pub fn start_square(self) -> u8 {
+        (self.data & 0b111111) as u8
     }
 
     /// bits 6-11
     #[inline]
-    pub fn end_square(self) -> usize {
-        ((self.data >> 6) & 0b111111) as usize
+    pub fn end_square(self) -> u8 {
+        ((self.data >> 6) & 0b111111) as u8
     }
 
     // TODO return u8 instead
@@ -529,10 +532,14 @@ impl Move {
     }
 
     #[inline]
-    pub fn id_captured(self) -> u8 {
-        let moving_side = ((self.data >> 23) & 0b1) as u8;
+    pub fn id_captured(self) -> Option<u8> {
         let captured_id = ((self.data >> 28) & 0b1111) as u8;
-        captured_id + (16 * moving_side)
+        if captured_id == 0b111 {
+            return None;
+        };
+
+        let moving_side = ((self.data >> 23) & 0b1) as u8;
+        Some(captured_id + (16 * moving_side))
     }
 }
 

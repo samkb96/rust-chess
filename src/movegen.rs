@@ -46,7 +46,7 @@ impl GameState {
     pub fn legal_moves_from(&self, start: usize) -> Moves {
         self.legal_moves()
             .into_iter()
-            .filter(|m| m.start_square() == start)
+            .filter(|m| m.start_square() == start as u8)
             .collect()
     }
 
@@ -256,7 +256,12 @@ impl GameState {
         moves
     }
 
-    fn slider_moves(&self, start: usize, piece_colour: PieceColour, piece_kind: PieceKind) -> Moves {
+    fn slider_moves(
+        &self,
+        start: usize,
+        piece_colour: PieceColour,
+        piece_kind: PieceKind,
+    ) -> Moves {
         let mut moves: Moves = SmallVec::with_capacity(MOVES_VEC_CAPACITY);
         let occupied = self.bitboards.occupied;
         let pin_and_check_mask =

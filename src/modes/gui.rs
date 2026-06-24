@@ -131,7 +131,7 @@ impl Board {
                 if let Some(move_to_make) = maybe_move {
                     clock.increment(game_state.side_to_move);
                     game_state.make_move(move_to_make);
-                    self.last_move_highlight = Some(move_to_make.end_square());
+                    self.last_move_highlight = Some(move_to_make.end_square() as usize);
                     search_thread_handler.waiting_for_bot = false;
                 }
             } else {
@@ -382,7 +382,7 @@ impl Board {
             let piece = Piece {
                 kind,
                 colour: pending_promotion.piece.colour,
-                id: 0 // gross
+                id: 0, // gross
             };
 
             let y_pos_base = picker_y + index as f32 * SQUARE_SIZE;
@@ -459,7 +459,7 @@ impl Board {
         // move should already be legal, checked in is_legal_promotion_attempt()
 
         game_state.make_move(candidate_move);
-        self.last_move_highlight = Some(candidate_move.end_square());
+        self.last_move_highlight = Some(candidate_move.end_square() as usize);
 
         self.pending_promotion = None;
     }
@@ -573,7 +573,7 @@ impl Board {
 
         self.legal_move_highlights = relevant_legal_moves
             .iter()
-            .map(|m| m.end_square())
+            .map(|m| m.end_square() as usize)
             .collect();
 
         if is_mouse_button_released(MouseButton::Left) {
@@ -605,7 +605,7 @@ impl Board {
             let candidate_move = self.candidate_move(game_state, origin, target, piece, None);
 
             if relevant_legal_moves.contains(&candidate_move) {
-                self.last_move_highlight = Some(candidate_move.end_square());
+                self.last_move_highlight = Some(candidate_move.end_square() as usize);
                 move_to_return = Some(candidate_move);
             };
 
@@ -662,9 +662,7 @@ impl Board {
     ) -> Move {
         let (start, end) = (origin.to_usize(), target.to_usize());
 
-        let target_square_occupant = game_state
-            .piece_at_square(end)
-            .map(|piece| piece.kind);
+        let target_square_occupant = game_state.piece_at_square(end).map(|piece| piece.kind);
 
         let candidate_move_type =
             Self::generate_move_type(origin, target, piece, target_square_occupant);
@@ -875,7 +873,11 @@ impl PieceTextures {
 
         for &colour in &PIECE_COLOURS {
             for &kind in &PIECE_KINDS {
-                let piece = Piece { kind, colour, id: 0 }; // pretty nasty to put in fake id here
+                let piece = Piece {
+                    kind,
+                    colour,
+                    id: 0,
+                }; // pretty nasty to put in fake id here
                 let image_name = piece.to_image_name();
                 let filename = format!("assets/textures/{}.png", image_name.as_str());
                 map.insert(piece, load_piece_texture(&filename).await);
