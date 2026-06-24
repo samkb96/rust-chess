@@ -30,7 +30,7 @@ Aims:
 - [x] Match node counts for a bunch of test positions
 - [x] Game endings (50 move draw, repetition draw, insufficient material draw, stalemate, checkmate)
     - postponed repetition until zobrist hashing. going with max 400 move games instead for now
-- [ ] Time controls
+- [x] Time controls
 
 ### Bot v1
 - [x] Simple evaluation function: material evaluation, piece-square tables
@@ -43,16 +43,15 @@ Aims:
 - [ ] Thought process logs
 
 ### Move Generation: Possible Optimisation
-- [ ] Magic bitboards
+- [x] Magic bitboards
 - [x] Attack tables
 - [x] Partial mask tables
 - [ ] Occupancy filtering
-- [ ] Move masking
+- [x] Move masking
 - [ ] Incremental updates
-- [ ] MMV-LVA ordering
 
 ### Search Algorithm: Possible Optimisations
-- [ ] Move ordering
+- [ ] Move ordering (MMV-LVA)
 - [ ] Quiescence search
 - [ ] Iterative deepening
 - [ ] Transposition tables
