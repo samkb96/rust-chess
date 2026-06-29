@@ -1,25 +1,3 @@
-// EXPLAINER
-//
-// When generating slider moves, looping over each square in each direction until we hit a blocker is slow
-// We instead want to just look up the bitboard of attacked squares
-//
-// For this, we'd need a massive lookup table of size 2^14 for all the possible blocker combinations, for each square: ~1GB
-// Would also be incredibly slow - we're having to linear search through 2^13 configurations until we find a match to retrieve the index of the attack mask
-//
-// However, most blocker configurations give the same attack mask, since a blocker behind another isn't affecting anything
-// In the worst case (rook in the centre), there are 144 possible attack masks - way fewer than the blocker combinations
-//
-// Key idea: if we had a fast function that
-//     - takes a bitboard of blocker combinations as input
-//     - outputs a relatively small index
-//     - sends different blocker combinations modulo redundancy to different indices
-// We could use this to hash the blocker combinations into a far smaller table, with O(1) lookups instead of linear search
-//
-// Such functions exist; they look like (blocker_bitboard * magic_number) >> shift_amount
-// We have basically no idea why this works, what characterises good magic_numbers, just gotta brute force it
-// Can optimise for maximum index size to shrink lookup table by trying different magics for a while
-// Still tends to be around 100-300x redundant, as equivalent configurations modulo redundancy get different indices on average. But still super fast
-
 use crate::constants::masks::*;
 use crate::mechanics::{BitBoard, closest_blocker, pop_lsb};
 use rand::Rng;
@@ -27,7 +5,9 @@ use std::sync::OnceLock;
 
 pub static MAGIC_BITBOARDS: OnceLock<MagicBitboards> = OnceLock::new();
 
-/// initialisation
+// initialisation
+// in a oncelock for now since it only takes half a second
+// TODO write an optimiser to improve collisions, save to a proper static table
 pub fn generate_static_magics() -> &'static MagicBitboards {
     MAGIC_BITBOARDS.get_or_init(generate_magic_bitboards)
 }

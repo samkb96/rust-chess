@@ -49,6 +49,13 @@ pub const ATTACK_MASKS: [[BitBoard; 64]; 8] = [
     SOUTHWEST_RAY,
     WEST_RAY,
 ];
+
+pub const INCREASING_RAYS: [[BitBoard; 64]; 4] =
+    [NORTHWEST_RAY, NORTH_RAY, NORTHEAST_RAY, EAST_RAY];
+
+pub const DECREASING_RAYS: [[BitBoard; 64]; 4] =
+    [SOUTHEAST_RAY, SOUTH_RAY, SOUTHWEST_RAY, WEST_RAY];
+
 pub const PAWN_ATTACKS: [[BitBoard; 64]; 2] = [WHITE_PAWN_ATTACKS, BLACK_PAWN_ATTACKS];
 
 pub const BISHOP_DIRECTIONS: &[usize] = &[0, 2, 4, 6];

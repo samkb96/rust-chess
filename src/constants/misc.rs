@@ -46,6 +46,25 @@ pub const CASTLING_SQUARES: ([[BitBoard; 2]; 2], [[BitBoard; 2]; 2]) = (
     [[28, 112], [2017612633061982208, 8070450532247928832]],
 );
 
+// lookup index of rook start/end pos by king end index
+pub const ROOK_START: [usize; 64] = {
+    let mut t = [0; 64];
+    t[2] = 0;
+    t[6] = 7;
+    t[58] = 56;
+    t[62] = 63;
+    t
+};
+
+pub const ROOK_END: [usize; 64] = {
+    let mut t = [0; 64];
+    t[2] = 3;
+    t[6] = 5;
+    t[58] = 59;
+    t[62] = 61;
+    t
+};
+
 // pawn structure testing stuff
 pub const FILES: [BitBoard; 8] = get_files();
 pub const ADJACENT_FILES: [BitBoard; 8] = get_adjacent_files();

@@ -1,11 +1,17 @@
 use crate::constants::magic::lookup_magic;
 use crate::constants::masks::*;
 use crate::constants::misc::*;
+use crate::mechanics::PieceColour::Black;
+use crate::mechanics::PieceColour::White;
 use crate::mechanics::PieceKind::Bishop;
+use crate::mechanics::PieceKind::King;
+use crate::mechanics::PieceKind::Knight;
+use crate::mechanics::PieceKind::Pawn;
 use crate::mechanics::PieceKind::Queen;
 use crate::mechanics::PieceKind::Rook;
 use arrayvec::ArrayString;
 use macroquad::prelude::*;
+use smallvec::SmallVec;
 
 pub type BitBoard = u64;
 
@@ -15,9 +21,11 @@ pub struct BitBoards {
     pub white_pieces: BitBoard,
     pub black_pieces: BitBoard,
     pub occupied: BitBoard,
-    pub attacked_by: [[BitBoard; 6]; 2],
+    pub attacked_by_id: [BitBoard; 32],
     pub attacked_by_white: BitBoard,
     pub attacked_by_black: BitBoard,
+    pub bishoplike: BitBoard,
+    pub rooklike: BitBoard,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -59,7 +67,15 @@ pub struct PinsAndCheckers {
     pub check_mask: BitBoard,
 }
 
-// pins, checks, aggregates
+#[derive(Clone, Debug)]
+pub struct Pins {
+    // new pin logger
+    pinned_pieces: BitBoard,
+    piece_locations: SmallVec<[u8; 4]>,
+    pin_masks: SmallVec<[BitBoard; 4]>,
+}
+
+// attack masks, pins, checks
 impl BitBoards {
     pub fn recompute_aggregates(&mut self) {
         self.white_pieces = 0;
@@ -71,10 +87,53 @@ impl BitBoards {
         }
 
         self.occupied = self.white_pieces | self.black_pieces;
-
-        self.attacked_by_white = self.all_attacked_squares(PieceColour::White);
-        self.attacked_by_black = self.all_attacked_squares(PieceColour::Black);
     }
+
+    pub fn initialise_attack_masks(
+        &mut self,
+        ids_from_locations: [Option<u8>; 64],
+        pieces: [Option<Piece>; 32],
+    ) {
+        let occupied = self.occupied;
+        let mut occupied_mutable = occupied;
+
+        let mut white_attacks = 0u64;
+        let mut black_attacks = 0u64;
+
+        while let Some(square_index) = pop_lsb(&mut occupied_mutable) {
+            let id = ids_from_locations[square_index].expect("locations don't match occupied bb");
+            let piece = pieces[id as usize].expect("pieces don't match ids");
+            let kind = piece.kind;
+            let colour = piece.colour;
+
+            let piece_attack_mask = match kind {
+                Pawn => PAWN_ATTACKS[colour as usize][square_index],
+                Knight => KNIGHT_ATTACKS[square_index],
+                King => KING_ATTACKS[square_index],
+                _ => {
+                    let mask = match kind {
+                        Bishop => TRIMMED_BISHOP_MASKS[square_index],
+                        Rook => TRIMMED_ROOK_MASKS[square_index],
+                        Queen => TRIMMED_QUEEN_MASKS[square_index],
+                        _ => unreachable!(),
+                    };
+                    let blockers = mask & occupied;
+                    lookup_magic(kind as u8, square_index, blockers)
+                }
+            };
+
+            self.attacked_by_id[id as usize] = piece_attack_mask;
+            match colour {
+                White => white_attacks |= piece_attack_mask,
+                Black => black_attacks |= piece_attack_mask,
+            }
+        }
+
+        self.attacked_by_white = white_attacks;
+        self.attacked_by_black = black_attacks;
+    }
+
+    pub fn calculate_pinned_piece_bitboard(&self) {}
 
     pub fn get_pins_and_checks(&self, side_to_move: PieceColour) -> PinsAndCheckers {
         // TODO unravel crazy nesting. Very difficult to see what's going on
@@ -212,7 +271,7 @@ impl BitBoards {
             Bishop => TRIMMED_BISHOP_MASKS,
             Rook => TRIMMED_ROOK_MASKS,
             Queen => TRIMMED_QUEEN_MASKS,
-            _ => unreachable!(),
+            _ => unreachable!("Calling slider attacks with a non-slider"),
         };
 
         let mut current_slider_attack_masks = 0u64;
@@ -225,24 +284,6 @@ impl BitBoards {
             current_slider_attack_masks |= attack_mask;
         }
         current_slider_attack_masks
-    }
-
-    pub fn all_attacked_squares(&mut self, piece_colour: PieceColour) -> BitBoard {
-        let colour = piece_colour as usize;
-
-        self.attacked_by[colour][0] = self.pawn_attacks(piece_colour);
-        self.attacked_by[colour][1] = self.knight_attacks(piece_colour);
-        self.attacked_by[colour][2] = self.slider_attacks(Bishop, piece_colour);
-        self.attacked_by[colour][3] = self.slider_attacks(Rook, piece_colour);
-        self.attacked_by[colour][4] = self.slider_attacks(Queen, piece_colour);
-        self.attacked_by[colour][5] = self.king_attacks(piece_colour);
-
-        let mut attacked_squares = 0u64;
-        for i in 0usize..=5 {
-            attacked_squares |= self.attacked_by[colour][i]
-        }
-
-        attacked_squares
     }
 }
 
@@ -430,22 +471,6 @@ pub fn pop_lsb(bitboard: &mut BitBoard) -> Option<usize> {
     let lsb_idx = index_lsb(*bitboard)?;
     *bitboard &= *bitboard - 1;
     Some(lsb_idx)
-}
-
-// bitboard debugging
-pub fn bb_to_screen_printable_string(bb: &BitBoard) -> [String; 8] {
-    let mut result: [String; 8] = Default::default();
-    for (rank_idx, rank) in (0..8).enumerate() {
-        // unecessary loop variable index warning fix
-        let mut rank_str = String::with_capacity(8);
-        for file in 0..8 {
-            let square_index = (7 - rank) * 8 + file;
-            let bit = bb >> square_index & 1;
-            rank_str.push_str(if bit == 1 { "1 " } else { "_ " })
-        }
-        result[rank_idx] = rank_str;
-    }
-    result
 }
 
 pub fn print_bitboard(bb: BitBoard) {

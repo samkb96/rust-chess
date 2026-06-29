@@ -3,6 +3,7 @@ use crate::engine::bot_handler::*;
 use crate::game_state::*;
 use crate::mechanics::*;
 use crate::movegen::MoveType;
+use crate::movegen::MoveType::*;
 use macroquad::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -661,6 +662,8 @@ impl Board {
         promotion: Option<PieceKind>,
     ) -> Move {
         let (start, end) = (origin.to_usize(), target.to_usize());
+        let id_moved = game_state.ids_from_locations[start]
+            .expect("Should be able to find piece at start square");
 
         let target_square_occupant = game_state.piece_at_square(end).map(|piece| piece.kind);
 
@@ -668,19 +671,35 @@ impl Board {
             Self::generate_move_type(origin, target, piece, target_square_occupant);
 
         if let Some(promotion_choice) = promotion {
-            return Move::promotion(start, end, promotion_choice, target_square_occupant);
+            let id_captured = game_state.ids_from_locations[end];
+            return Move::promotion(
+                start,
+                end,
+                id_moved,
+                promotion_choice,
+                target_square_occupant,
+                id_captured,
+            );
         }
         match candidate_move_type {
-            MoveType::Normal => {
+            Normal => {
                 if let Some(captured) = target_square_occupant {
-                    Move::capture(start, end, piece.kind, captured)
+                    let id_captured = game_state.ids_from_locations[end]
+                        .expect("Shouldn't be capturable without a valid ID at square");
+                    Move::capture(start, end, piece.kind, id_moved, captured, id_captured)
                 } else {
-                    Move::quiet(start, end, piece.kind)
+                    Move::quiet(start, end, piece.kind, id_moved)
                 }
             }
-            MoveType::EnPassant => Move::en_passant(start, end),
-            MoveType::CastleKingside => Move::castling(end, 2),
-            MoveType::CastleQueenside => Move::castling(end, 3),
+            EnPassant => {
+                let ep_captured_rank = start & 0xF8;
+                let ep_captured_file = end & 0x7;
+                let ep_captured_square = ep_captured_rank | ep_captured_file;
+                let id_captured = game_state.ids_from_locations[ep_captured_square]
+                    .expect("Should always be valid capture in EP");
+                Move::en_passant(start, end, id_moved, id_captured)
+            }
+            CastleKingside | CastleQueenside => Move::castling(end, id_moved),
         }
     }
 
@@ -830,6 +849,15 @@ impl BoardCoordinate {
                 ..Default::default()
             },
         );
+
+        let piece_id = piece.id.to_string();
+        draw_text(
+            &piece_id,
+            top_left.0 + (SQUARE_SIZE - width) / 2.0,
+            top_left.1 + SQUARE_SIZE - height - VERTICAL_LIFT,
+            20.0,
+            RED,
+        );
     }
 
     pub fn square_name(&self) -> String {
@@ -886,10 +914,14 @@ impl PieceTextures {
         Self { map }
     }
 
-    fn get(&self, &piece: &Piece) -> &Texture2D {
-        self.map
-            .get(&(piece))
-            .expect("Unable to load piece texture for piece {piece}")
+    fn get(&self, piece: &Piece) -> &Texture2D {
+        let texture = self.map.get(piece);
+        if let Some(texture) = texture {
+            texture
+        } else {
+            println!("Unable to load texture for piece {piece:?}");
+            panic!()
+        }
     }
 }
 

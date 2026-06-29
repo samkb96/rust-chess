@@ -2,7 +2,7 @@ use crate::constants::misc::{DARK_SQUARES, LIGHT_SQUARES};
 use crate::mechanics::PieceColour::{Black, White};
 use crate::mechanics::PieceKind::{Bishop, King, Knight, Pawn, Queen, Rook};
 use crate::mechanics::*;
-use crate::movegen::MoveType;
+use crate::movegen::MoveType::{self, CastleKingside, CastleQueenside, EnPassant, Normal};
 use macroquad::prelude::*;
 use smallvec::SmallVec;
 use std::fmt::Display;
@@ -115,7 +115,9 @@ impl GameState {
                 }
             }
         }
+
         bitboards.recompute_aggregates();
+        bitboards.initialise_attack_masks(ids_from_locations, pieces);
 
         // side to move
         let side_to_move = match active_colour {
@@ -277,7 +279,7 @@ impl GameState {
 
 impl GameState {
     pub fn piece_at_square(&self, square: usize) -> Option<Piece> {
-        let id_at_square = self.locations_from_ids[square]?;
+        let id_at_square = self.ids_from_locations[square]?;
         self.pieces[id_at_square as usize]
     }
 }
@@ -462,9 +464,32 @@ pub struct OldMove {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-/// fast 32-bit encoding
+/// Leaner 32-bit encoding.
+/// Start square: bits 0-5
+/// End square: bits 6-11
+/// Piece kind moved: bits 12-14
+/// Piece kind captured: bits 15-17 -- sentinel 0x7
+/// Promotion choice: bits 18-20 -- sentinel 0x0
+/// Exotic move indicator: bit 21 (distinguish EnPassant / CastleKingside / CastleQueenside through piece kind moved + end/start square)
+/// Moved piece ID: bits 22-26
+/// Captured piece ID: bits 27-31 -- no space for sentinel, use piece kind captured
 pub struct Move {
     pub data: u32,
+}
+
+impl Display for Move {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let start = self.start_square();
+        let end = self.end_square();
+
+        let start_file = (b'a' + (start % 8)) as char;
+        let start_rank = (b'1' + (start / 8)) as char;
+
+        let end_file = (b'a' + (end % 8)) as char;
+        let end_rank = (b'1' + (end / 8)) as char;
+
+        write!(f, "{start_file}{start_rank}{end_file}{end_rank}")
+    }
 }
 
 /// getters
@@ -481,13 +506,13 @@ impl Move {
         ((self.data >> 6) & 0b111111) as u8
     }
 
-    // TODO return u8 instead
+    // bits 12-14
     #[inline]
     pub fn piece_moved(self) -> PieceKind {
         PieceKind::try_from(((self.data >> 12) & 0b111) as u8).unwrap()
     }
 
-    // TODO return u8 instead
+    // bits 15-17
     #[inline]
     pub fn captured(self) -> Option<PieceKind> {
         // host none as 0b111, else direct piece index
@@ -499,7 +524,7 @@ impl Move {
         }
     }
 
-    // TODO return u8 instead
+    // bits 18-20
     #[inline]
     pub fn promotion_choice(self) -> Option<PieceKind> {
         let promotion_choice = ((self.data >> 18) & 0b111) as u8;
@@ -510,136 +535,214 @@ impl Move {
         }
     }
 
+    // bit 21
     #[inline]
     pub fn move_type(self) -> MoveType {
-        MoveType::try_from(((self.data >> 21) & 0b11) as u8).unwrap()
-    }
+        let exotic_bit = (self.data >> 21) & 0b1;
+        if exotic_bit == 0 {
+            return Normal;
+        };
 
-    #[inline]
-    pub fn side_moving(self) -> PieceColour {
-        match (self.data >> 22) & 0b1 {
-            0 => PieceColour::White,
-            1 => PieceColour::Black,
-            _ => unreachable!(),
+        let piece_moved = self.piece_moved();
+        if piece_moved == Pawn {
+            return EnPassant;
+        }
+
+        assert_eq!(
+            piece_moved, King,
+            "Can't determine movetype. Piece moved is {piece_moved:?}"
+        );
+
+        if self.start_square() < self.end_square() {
+            assert!(
+                self.end_square() == 6 || self.end_square() == 62,
+                "Invalid kingside castle target: {}",
+                self.end_square()
+            );
+            CastleKingside
+        } else {
+            assert!(
+                self.end_square() == 2 || self.end_square() == 58,
+                "Invalid queenside castle target: {}",
+                self.end_square()
+            );
+            CastleQueenside
         }
     }
 
+    // bits 22-26
     #[inline]
     pub fn id_moved(self) -> u8 {
-        let moving_side = ((self.data >> 23) & 0b1) as u8;
-        let moved_id = ((self.data >> 24) & 0b1111) as u8;
-        moved_id + (16 * moving_side)
+        ((self.data >> 22) & 0b11111) as u8
     }
 
+    // bits 27-31
     #[inline]
     pub fn id_captured(self) -> Option<u8> {
-        let captured_id = ((self.data >> 28) & 0b1111) as u8;
-        if captured_id == 0b111 {
-            return None;
-        };
-
-        let moving_side = ((self.data >> 23) & 0b1) as u8;
-        Some(captured_id + (16 * moving_side))
+        self.captured()?;
+        Some(((self.data >> 27) & 0b11111) as u8)
     }
 }
 
 /// setters
 impl Move {
-    // TODO everything needs rewriting to make use of smaller data without casts
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
     fn from_data(
         start_bits: u32,
         end_bits: u32,
         piecemoved_bits: u32,
-        targetkind_bits: u32,
+        piececaptured_bits: u32,
         promotion_bits: u32,
         move_type_bits: u32,
+        idmoved_bits: u32,
+        idcaptured_bits: u32,
     ) -> Self {
         let data = start_bits
             | end_bits << 6
             | piecemoved_bits << 12
-            | targetkind_bits << 15
+            | piececaptured_bits << 15
             | promotion_bits << 18
-            | move_type_bits << 21;
-
+            | move_type_bits << 21
+            | idmoved_bits << 22
+            | idcaptured_bits << 27;
         Self { data }
     }
 
-    pub fn quiet(start: usize, end: usize, piece_moved: PieceKind) -> Self {
+    #[inline]
+    pub fn quiet(start: usize, end: usize, piece_moved: PieceKind, id_moved: u8) -> Self {
         let start_bits = start as u32;
         let end_bits = end as u32;
         let piecemoved_bits = piece_moved as u32;
-        Self::from_data(start_bits, end_bits, piecemoved_bits, 7, 0, 0)
+        let idmoved_bits = id_moved as u32;
+        Self::from_data(
+            start_bits,
+            end_bits,
+            piecemoved_bits,
+            7,
+            0,
+            0,
+            idmoved_bits,
+            0, // shouldn't be an issue since we check self.captured() for sentinel
+        )
     }
 
+    #[inline]
     pub fn capture(
         start: usize,
         end: usize,
         piece_moved: PieceKind,
-        target_kind: PieceKind,
+        id_moved: u8,
+        piece_captured: PieceKind,
+        id_captured: u8,
     ) -> Self {
         let start_bits = start as u32;
         let end_bits = end as u32;
         let piecemoved_bits = piece_moved as u32;
-        let targetkind_bits = target_kind as u32;
-        Self::from_data(start_bits, end_bits, piecemoved_bits, targetkind_bits, 0, 0)
+        let idmoved_bits = id_moved as u32;
+        let piececaptured_bits = piece_captured as u32;
+        let idcaptured_bits = id_captured as u32;
+
+        Self::from_data(
+            start_bits,
+            end_bits,
+            piecemoved_bits,
+            piececaptured_bits,
+            0,
+            0,
+            idmoved_bits,
+            idcaptured_bits,
+        )
     }
 
+    #[inline]
     pub fn promotion(
         start: usize,
         end: usize,
+        id_moved: u8,
         promotion: PieceKind,
-        target_kind: Option<PieceKind>,
+        piece_captured: Option<PieceKind>,
+        id_captured: Option<u8>,
     ) -> Self {
         let start_bits = start as u32;
         let end_bits = end as u32;
-        // don't need piecekind bits as pawns are 0
-        let targetkind_bits = if let Some(target_kind) = target_kind {
-            target_kind as u32
-        } else {
-            0b111
-        };
+        let idmoved_bits = id_moved as u32;
         let promotion_bits = promotion as u32;
-        Self::from_data(start_bits, end_bits, 0, targetkind_bits, promotion_bits, 0)
+        let piececaptured_bits = piece_captured.map_or(0b111, |p| p as u32);
+        let idcaptured_bits = id_captured.unwrap_or(0) as u32;
+
+        Self::from_data(
+            start_bits,
+            end_bits,
+            0,
+            piececaptured_bits,
+            promotion_bits,
+            0,
+            idmoved_bits,
+            idcaptured_bits,
+        )
     }
 
+    #[inline]
     pub fn promotions(
         start: usize,
         end: usize,
-        target_kind: Option<PieceKind>,
+        id_moved: u8,
+        piece_captured: Option<PieceKind>,
+        id_captured: Option<u8>,
     ) -> SmallVec<[Self; 4]> {
         let start_bits = start as u32;
         let end_bits = end as u32;
-        // don't need piecekind bits as pawns are 0
-        let targetkind_bits = if let Some(target_kind) = target_kind {
-            target_kind as u32
-        } else {
-            0b111
-        };
+        let idmoved_bits = id_moved as u32;
+        let piececaptured_bits = piece_captured.map_or(0b111, |p| p as u32);
+        let idcaptured_bits = id_captured.unwrap_or(0) as u32;
+
         (1u32..=4)
             .map(|promotion_bits| {
-                Self::from_data(start_bits, end_bits, 0, targetkind_bits, promotion_bits, 0)
+                Self::from_data(
+                    start_bits,
+                    end_bits,
+                    0,
+                    piececaptured_bits,
+                    promotion_bits,
+                    0,
+                    idmoved_bits,
+                    idcaptured_bits,
+                )
             })
             .collect()
     }
 
-    pub fn en_passant(start: usize, end: usize) -> Self {
+    #[inline]
+    pub fn en_passant(start: usize, end: usize, id_moved: u8, id_captured: u8) -> Self {
         let start_bits = start as u32;
         let end_bits = end as u32;
-        let movetype_bits = 1u32;
-        Self::from_data(start_bits, end_bits, 0, 0, 0, movetype_bits)
+        let idmoved_bits = id_moved as u32;
+        let idcaptured_bits = id_captured as u32;
+
+        Self::from_data(
+            start_bits,
+            end_bits,
+            0,
+            0,
+            0,
+            1,
+            idmoved_bits,
+            idcaptured_bits,
+        )
     }
 
-    pub fn castling(end: usize, castling_side: u8) -> Self {
+    #[inline]
+    pub fn castling(end: usize, id_moved: u8) -> Self {
         let end_bits = end as u32;
         let start_bits = match end {
             2 | 6 => 4u32,
             58 | 62 => 60u32,
             _ => unreachable!("invalid target square for castling"),
         };
+        let idmoved_bits = id_moved as u32;
 
-        let movetype_bits = castling_side as u32;
-
-        Self::from_data(start_bits, end_bits, 5, 7, 0, movetype_bits)
+        Self::from_data(start_bits, end_bits, 5, 7, 0, 1, idmoved_bits, 0)
     }
 }
 
