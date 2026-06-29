@@ -1,17 +1,10 @@
 use crate::constants::magic::lookup_magic;
 use crate::constants::masks::*;
 use crate::constants::misc::*;
-use crate::mechanics::PieceColour::Black;
-use crate::mechanics::PieceColour::White;
-use crate::mechanics::PieceKind::Bishop;
-use crate::mechanics::PieceKind::King;
-use crate::mechanics::PieceKind::Knight;
-use crate::mechanics::PieceKind::Pawn;
-use crate::mechanics::PieceKind::Queen;
-use crate::mechanics::PieceKind::Rook;
+use crate::mechanics::PieceColour::*;
+use crate::mechanics::PieceKind::*;
 use arrayvec::ArrayString;
 use macroquad::prelude::*;
-use smallvec::SmallVec;
 
 pub type BitBoard = u64;
 
@@ -65,14 +58,6 @@ pub struct PinsAndCheckers {
     pub pins: [BitBoard; 64],
     // optimisation. not in check -> !0, single check is a nontrivial ray, double check -> 0
     pub check_mask: BitBoard,
-}
-
-#[derive(Clone, Debug)]
-pub struct Pins {
-    // new pin logger
-    pinned_pieces: BitBoard,
-    piece_locations: SmallVec<[u8; 4]>,
-    pin_masks: SmallVec<[BitBoard; 4]>,
 }
 
 // attack masks, pins, checks
@@ -473,6 +458,7 @@ pub fn pop_lsb(bitboard: &mut BitBoard) -> Option<usize> {
     Some(lsb_idx)
 }
 
+#[allow(dead_code)]
 pub fn print_bitboard(bb: BitBoard) {
     for rank in (0..8).rev() {
         print!("{}  ", rank + 1);
@@ -488,4 +474,45 @@ pub fn print_bitboard(bb: BitBoard) {
         println!();
     }
     println!("\n    a b c d e f g h\n");
+}
+
+#[allow(dead_code)]
+pub fn print_position(pieces: [[BitBoard; 6]; 2]) {
+    for rank in (0..8).rev() {
+        for file in 0..8 {
+            let sq = rank * 8 + file;
+            let bb = 1u64 << sq;
+
+            let c = if pieces[0][0] & bb != 0 {
+                'P'
+            } else if pieces[0][1] & bb != 0 {
+                'N'
+            } else if pieces[0][2] & bb != 0 {
+                'B'
+            } else if pieces[0][3] & bb != 0 {
+                'R'
+            } else if pieces[0][4] & bb != 0 {
+                'Q'
+            } else if pieces[0][5] & bb != 0 {
+                'K'
+            } else if pieces[1][0] & bb != 0 {
+                'p'
+            } else if pieces[1][1] & bb != 0 {
+                'n'
+            } else if pieces[1][2] & bb != 0 {
+                'b'
+            } else if pieces[1][3] & bb != 0 {
+                'r'
+            } else if pieces[1][4] & bb != 0 {
+                'q'
+            } else if pieces[1][5] & bb != 0 {
+                'k'
+            } else {
+                '.'
+            };
+
+            print!("{c} ");
+        }
+        println!();
+    }
 }

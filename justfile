@@ -28,15 +28,15 @@ perft *args:
 
 movegen:
     # start
-    cargo run --release --bin cli -- perft rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 6
+    #cargo run --release --bin cli -- perft rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 5
     # middlegame
-    cargo run --release --bin cli -- perft r1bqkb1r/pppp1ppp/2n2n2/4p3/3PP3/2N2N2/PPP2PPP/R1BQKB1R b KQkq - 1 8 5
+    #cargo run --release --bin cli -- perft r1bqkb1r/pppp1ppp/2n2n2/4p3/3PP3/2N2N2/PPP2PPP/R1BQKB1R b KQkq - 1 8 5
     # endgame
-    cargo run --release --bin cli -- perft 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1 7
+    cargo run --release --bin cli -- perft 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1 4
 
 # profiling
 mgfg:
-    RUSTFLAGS="-C inline-threshold=0" cargo build --bin cli --release
+    RUSTFLAGS="-Cllvm-args=--inline-threshold=0" cargo build --bin cli --release
     samply record cargo run --bin cli --profile release -- perft rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 6
 
 cliprofile:

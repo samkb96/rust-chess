@@ -4,7 +4,7 @@ use crate::constants::misc::{ROOK_END, ROOK_START};
 use crate::game_state::{GameState, Move, PreviousState};
 #[allow(unused_imports)]
 use crate::mechanics::{BitBoard, Piece, PieceColour::*, pop_lsb, print_bitboard};
-use crate::mechanics::{PieceColour, PieceKind, PieceKind::*};
+use crate::mechanics::{PieceColour, PieceKind::{self, *}, print_position};
 use crate::movegen::MoveType::{self, *};
 
 // TODO incremental pins/checks update
@@ -80,18 +80,21 @@ impl GameState {
         self.update_slider_ids(start, end, move_type, seen);
     }
 
-    #[allow(clippy::needless_range_loop)] // don't pull attack masks into iter to avoid reallocation
+     // don't pull attack masks into iter to avoid reallocation
     fn update_for_increasing_directions(
         &mut self,
         square: usize,
         occupied: BitBoard,
         mut seen: u32,
     ) -> u32 {
+
         let queens = self.bitboards.pieces[0][4] | self.bitboards.pieces[1][4];
+
+        #[allow(clippy::needless_range_loop)]
         for direction in 0..4 {
             let ray = ATTACK_MASKS[direction][square];
             let blockers = ray & occupied;
-            let horizontal = (direction & 1) == 0;
+            let horizontal = (direction & 1) != 0; // 0 northwest -> false, 1 north -> true, etc
 
             if blockers == 0 {
                 continue;
@@ -141,12 +144,15 @@ impl GameState {
         occupied: BitBoard,
         mut seen: u32,
     ) -> u32 {
+
         let queens = self.bitboards.pieces[0][4] | self.bitboards.pieces[1][4];
+
+        #[allow(clippy::needless_range_loop)]
         for direction in 4..8 {
             let ray = ATTACK_MASKS[direction][square];
             let blockers = ray & occupied;
 
-            let horizontal = (direction & 1) == 0;
+            let horizontal = (direction & 1) != 0;
 
             if blockers == 0 {
                 continue;
@@ -191,8 +197,7 @@ impl GameState {
 
     fn update_all_directions(&mut self, square: usize, occupied: BitBoard, mut seen: u32) -> u32 {
         seen = self.update_for_decreasing_directions(square, occupied, seen);
-        seen = self.update_for_increasing_directions(square, occupied, seen);
-
+        seen = self.update_for_increasing_directions(square, occupied, seen); 
         seen
     }
 
@@ -221,6 +226,47 @@ impl GameState {
 
 impl GameState {
     pub fn make_move(&mut self, move_to_make: Move) {
+        // DEBUG check attack masks being updated properly
+        
+        for id in 0..32 {
+            let Some(piece) = self.pieces[id] else { continue };
+            let inc_mask = self.bitboards.attacked_by_id[id];
+            let colour = piece.colour;
+            let kind = piece.kind;
+            let square_index = self.locations_from_ids[id].unwrap() as usize;
+            let rec_mask = match kind {
+                Pawn => PAWN_ATTACKS[colour as usize][square_index],
+                Knight => KNIGHT_ATTACKS[square_index],
+                King => KING_ATTACKS[square_index],
+                _ => {
+                    let mask = match kind {
+                        Bishop => TRIMMED_BISHOP_MASKS[square_index],
+                        Rook => TRIMMED_ROOK_MASKS[square_index],
+                        Queen => TRIMMED_QUEEN_MASKS[square_index],
+                        _ => unreachable!(),
+                    };
+                    let blockers = mask & self.bitboards.occupied;
+                    lookup_magic(kind as u8, square_index, blockers)
+                }
+            };
+            if inc_mask != rec_mask {
+                println!("---Mask difference---");
+                println!("Piece: {colour:?} {kind:?}");
+                println!("Incremental mask:");
+                print_bitboard(inc_mask);
+                println!("Recalculated mask:");
+                print_bitboard(rec_mask);
+                println!("Board layout:");
+                print_position(self.bitboards.pieces);
+                self.unmake_move();
+                println!("Previous layout:");
+                print_position(self.bitboards.pieces);
+                panic!()
+            }
+        }
+
+
+
         // first cache state
         self.previous_state.push(PreviousState {
             bitboards: self.bitboards.clone(),
@@ -229,6 +275,7 @@ impl GameState {
             en_passant_square: self.en_passant_square,
             halfmove_clock: self.halfmove_clock,
         });
+
 
         // piece/colour bitboards
         self.update_position_bitboards(move_to_make);
